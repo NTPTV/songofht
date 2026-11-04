@@ -1592,6 +1592,9 @@
   <!-- SortableJS CDN for Smooth Member Drag & Drop -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 
+  <!-- Supabase JS Client v2 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <!-- HTML2Canvas CDN for High-Res Pure HTML ID Card Export -->
   
 </head>
@@ -5333,6 +5336,30 @@
     const STORAGE_KEY_ADMIN = 'song_of_ht_admin_logged_v2'; window.STORAGE_KEY_ADMIN = STORAGE_KEY_ADMIN;
     const STORAGE_KEY_HEARTS = 'song_of_ht_hearts_count'; window.STORAGE_KEY_HEARTS = STORAGE_KEY_HEARTS;
     const STORAGE_KEY_CATEGORIES = 'song_of_ht_portfolio_categories_v1'; window.STORAGE_KEY_CATEGORIES = STORAGE_KEY_CATEGORIES;
+
+    // =============================================================
+    // KẾT NỐI SUPABASE CLOUD DATABASE (bxh, ky, tim) - SÓNG OF HT
+    // =============================================================
+    const SUPABASE_PROJECT_URL = 'https://ycifixbmcfjixmmjyfpb.supabase.co';
+    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_plTwcKePEHNn4Jck-Ud_Cw_0V6-xR0A';
+    const SUPABASE_TABLE_BXH = 'bxh';
+    const SUPABASE_TABLE_KY = 'ky';
+    const SUPABASE_TABLE_TIM = 'tim';
+    let supabaseClient = null;
+
+    function getSupabase() {
+      if (supabaseClient) return supabaseClient;
+      try {
+        if (window.supabase && typeof window.supabase.createClient === 'function') {
+          supabaseClient = window.supabase.createClient(SUPABASE_PROJECT_URL, SUPABASE_PUBLISHABLE_KEY);
+          window.supabaseClient = supabaseClient;
+          return supabaseClient;
+        }
+      } catch (e) {
+        console.warn('[Supabase] Khởi tạo client thất bại:', e);
+      }
+      return null;
+    }
     const DEFAULT_PORTFOLIO_CATEGORIES = [
   {
     "id": "video",
@@ -6727,6 +6754,8 @@
       }
       
       renderLeaderboard();
+      fetchLeaderboardFromSupabase();
+      initLeaderboardRealtime();
       updateSuggestionBadge();
 
       initBubbleCursor();
@@ -11135,6 +11164,124 @@
     // =============================================================
     // STORAGE_KEY_HEARTS đã được khai báo ở đầu script và gán vào window.STORAGE_KEY_HEARTS
 
+    let heartSupabaseRowId = null;
+    let heartSyncTimer = null;
+    let pendingHeartIncrements = 0;
+
+    async function fetchHeartsFromSupabase() {
+      const client = getSupabase();
+      if (!client) return;
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_TIM)
+          .select('*')
+          .limit(1);
+
+        if (error) {
+          console.warn('[Supabase tim] Lỗi khi tải lượt tim:', error);
+          return;
+        }
+
+        if (data && data.length > 0) {
+          const row = data[0];
+          heartSupabaseRowId = row.id;
+          const cloudCount = parseInt(row.count, 10);
+          if (!isNaN(cloudCount)) {
+            const localCount = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 0;
+            const finalCount = Math.max(cloudCount, localCount);
+            localStorage.setItem(STORAGE_KEY_HEARTS, finalCount);
+            const display = document.getElementById('heartCountDisplay');
+            if (display) display.textContent = finalCount.toLocaleString('vi-VN');
+          }
+        } else {
+          const currentLocal = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 1910;
+          const { data: inserted } = await client
+            .from(SUPABASE_TABLE_TIM)
+            .insert([{ count: currentLocal }])
+            .select();
+          if (inserted && inserted[0]) {
+            heartSupabaseRowId = inserted[0].id;
+          }
+        }
+      } catch (err) {
+        console.warn('[Supabase tim] Ngoại lệ khi tải tim:', err);
+      }
+    }
+
+    function initHeartsRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:tim')
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_TIM }, (payload) => {
+            if (payload.new && !isNaN(payload.new.count)) {
+              const newCount = parseInt(payload.new.count, 10);
+              const currentLocal = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 0;
+              if (newCount > currentLocal) {
+                localStorage.setItem(STORAGE_KEY_HEARTS, newCount);
+                const display = document.getElementById('heartCountDisplay');
+                if (display) display.textContent = newCount.toLocaleString('vi-VN');
+              }
+            }
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('[Supabase tim] Lỗi kết nối realtime tim:', err);
+      }
+    }
+
+    function scheduleHeartSyncToSupabase() {
+      if (heartSyncTimer) clearTimeout(heartSyncTimer);
+      heartSyncTimer = setTimeout(flushHeartsToSupabase, 1200);
+    }
+
+    async function flushHeartsToSupabase() {
+      if (pendingHeartIncrements <= 0) return;
+      const increments = pendingHeartIncrements;
+      pendingHeartIncrements = 0;
+
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        let currentCount;
+        if (heartSupabaseRowId) {
+          const { data } = await client
+            .from(SUPABASE_TABLE_TIM)
+            .select('count')
+            .eq('id', heartSupabaseRowId)
+            .single();
+          if (data && !isNaN(data.count)) {
+            currentCount = parseInt(data.count, 10) + increments;
+          }
+        }
+
+        if (isNaN(currentCount)) {
+          const localVal = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 1910;
+          currentCount = localVal;
+        }
+
+        if (heartSupabaseRowId) {
+          await client
+            .from(SUPABASE_TABLE_TIM)
+            .update({ count: currentCount })
+            .eq('id', heartSupabaseRowId);
+        } else {
+          const { data: inserted } = await client
+            .from(SUPABASE_TABLE_TIM)
+            .insert([{ count: currentCount }])
+            .select();
+          if (inserted && inserted[0]) {
+            heartSupabaseRowId = inserted[0].id;
+          }
+        }
+        console.log(`[Supabase tim] Đã đồng bộ batch +${increments} tim thành công! Tổng: ${currentCount}`);
+      } catch (err) {
+        console.warn('[Supabase tim] Ngoại lệ khi flush tim:', err);
+      }
+    }
+
     function initHeartsCount() {
       const display = document.getElementById('heartCountDisplay');
       if (!display) return;
@@ -11144,6 +11291,9 @@
         localStorage.setItem(STORAGE_KEY_HEARTS, count);
       }
       display.textContent = count.toLocaleString('vi-VN');
+
+      fetchHeartsFromSupabase();
+      initHeartsRealtime();
     }
     window.initHeartsCount = initHeartsCount;
 
@@ -11190,6 +11340,10 @@
       if (display) {
         display.textContent = current.toLocaleString('vi-VN');
       }
+
+      // Tự động đồng bộ số tim lên bảng 'tim' trên Supabase (có debounce tránh quá tải)
+      pendingHeartIncrements += 1;
+      scheduleHeartSyncToSupabase();
 
       // Tạo các hạt tim bay bổng
       const btn = e.currentTarget || document.getElementById('sendHeartBtn');
@@ -11311,6 +11465,67 @@ function initGraffitiWall() {
       });
 
       renderGraffitiWall();
+      fetchGraffitiFromSupabase();
+      initGraffitiRealtime();
+    }
+
+    async function fetchGraffitiFromSupabase() {
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_KY)
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(30);
+
+        if (error) {
+          console.warn('[Supabase ky] Lỗi khi tải dữ liệu bảng ky:', error);
+          return;
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          const cloudNotes = data.map((row, idx) => {
+            let dateStr = '05/11/2026';
+            if (row.created_at) {
+              try {
+                const d = new Date(row.created_at);
+                dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+              } catch (e) {}
+            }
+            return {
+              id: row.id || ('cloud_' + idx),
+              author: row.name || 'Một học sinh Hà Trung ẩn danh',
+              note: row.message || '',
+              drawing: row.signature_data || null,
+              date: dateStr,
+              isCloud: true
+            };
+          });
+
+          localStorage.setItem(STORAGE_KEY_GRAFFITI, JSON.stringify(cloudNotes));
+          renderGraffitiWall(cloudNotes);
+        }
+      } catch (err) {
+        console.warn('[Supabase ky] Ngoại lệ khi tải chữ ký:', err);
+      }
+    }
+
+    function initGraffitiRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:ky')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: SUPABASE_TABLE_KY }, (payload) => {
+            console.log('[Supabase ky] Nhận chữ ký mới từ đám mây:', payload);
+            fetchGraffitiFromSupabase();
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('[Supabase ky] Lỗi kết nối realtime ky:', err);
+      }
     }
 
     function getCanvasCoords(e) {
@@ -11468,6 +11683,18 @@ function initGraffitiWall() {
 
       showToast('🎉 +50 Điểm Cống Hiến! Chữ ký & lời chúc của bạn đã được ghim lên Tường Kỷ Niệm!');
 
+      // Lưu chữ ký vào bảng 'ky' trên Supabase (name, message, signature_data)
+      const client = getSupabase();
+      if (client) {
+        client.from(SUPABASE_TABLE_KY).insert([{
+          name: newEntry.author,
+          message: newEntry.note,
+          signature_data: newEntry.drawing
+        }]).then(({ error }) => {
+          if (error) console.warn('[Supabase ky] Lỗi khi insert vào bảng ky:', error);
+          else console.log('[Supabase ky] Đã lưu chữ ký thành công vào bảng ky!');
+        }).catch(err => console.warn('[Supabase ky] Ngoại lệ insert:', err));
+      }
     }
 
     function deleteGraffitiNote(id) {
@@ -11479,12 +11706,12 @@ function initGraffitiWall() {
       showToast('Đã gỡ lời chúc thành công!');
     }
 
-    function renderGraffitiWall() {
+    function renderGraffitiWall(customNotes) {
       const grid = document.getElementById('graffitiWallGrid');
       const countEl = document.getElementById('graffitiTotalCount');
       if (!grid) return;
 
-      const notes = getSavedGraffiti();
+      const notes = (customNotes && Array.isArray(customNotes)) ? customNotes : getSavedGraffiti();
       if (countEl) countEl.textContent = notes.length;
 
       grid.innerHTML = '';
@@ -14185,10 +14412,68 @@ function initGraffitiWall() {
       }
     }
 
-    function renderLeaderboard() {
+    let bxhSyncTimer = null;
+
+    async function fetchLeaderboardFromSupabase() {
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_BXH)
+          .select('*')
+          .order('score', { ascending: false })
+          .limit(20);
+
+        if (error) {
+          console.warn('[Supabase bxh] Lỗi truy vấn bảng bxh:', error);
+          return;
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          const cloudEntries = data.map((row, idx) => {
+            let medal = '⭐';
+            if (idx === 0) medal = '🥇';
+            else if (idx === 1) medal = '🥈';
+            else if (idx === 2) medal = '🥉';
+
+            return {
+              id: row.id || ('bxh_' + idx),
+              name: row.name || 'Học sinh Hà Trung',
+              score: Number(row.score) || 0,
+              badge: medal,
+              title: idx < 3 ? '🏆 Thủ Lĩnh Sóng' : '🌊 Thành Viên Tích Cực',
+              isCloud: true
+            };
+          });
+
+          localStorage.setItem(STORAGE_KEY_LEADERBOARD, JSON.stringify(cloudEntries));
+          renderLeaderboard(cloudEntries);
+        }
+      } catch (err) {
+        console.warn('[Supabase bxh] Ngoại lệ khi tải BXH:', err);
+      }
+    }
+
+    function initLeaderboardRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:bxh')
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_BXH }, () => {
+            fetchLeaderboardFromSupabase();
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('[Supabase bxh] Lỗi realtime bxh:', err);
+      }
+    }
+
+    function renderLeaderboard(customEntries) {
       const listContainer = document.getElementById('leaderboardEntriesList');
       if (!listContainer) return;
-      const entries = getSavedLeaderboard();
+      const entries = (customEntries && Array.isArray(customEntries)) ? customEntries : getSavedLeaderboard();
 
       // Check registered user status
       const savedUserNick = localStorage.getItem('song_of_ht_user_nickname');
@@ -14421,6 +14706,23 @@ function initGraffitiWall() {
       localStorage.setItem(STORAGE_KEY_LEADERBOARD, JSON.stringify(entries));
       if (typeof updateLeaderboardLiveScore === 'function') updateLeaderboardLiveScore();
       if (typeof renderLeaderboard === 'function') renderLeaderboard();
+
+      // Đồng bộ điểm người dùng lên bảng bxh trên Supabase
+      if (bxhSyncTimer) clearTimeout(bxhSyncTimer);
+      bxhSyncTimer = setTimeout(async () => {
+        const client = getSupabase();
+        if (!client || !savedUserNick) return;
+        try {
+          const { data } = await client.from(SUPABASE_TABLE_BXH).select('id, name, score').eq('name', savedUserNick).limit(1);
+          if (data && data.length > 0) {
+            if (stats.total > (data[0].score || 0)) {
+              await client.from(SUPABASE_TABLE_BXH).update({ score: stats.total }).eq('id', data[0].id);
+            }
+          } else {
+            await client.from(SUPABASE_TABLE_BXH).insert([{ name: savedUserNick, score: stats.total }]);
+          }
+        } catch (e) {}
+      }, 1500);
     }
 
     // Admin Delete Leaderboard Entry (Quyền Xóa Tên Phá Phách)
