@@ -1631,6 +1631,19 @@
       contain: layout style paint;
     }
   </style>
+
+  <style id="mobile-header-bg-lock">
+    html, body {
+      background-color: #0b132b !important;
+      background: #0b132b !important;
+      overscroll-behavior-y: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    header {
+      background-color: rgba(11, 19, 43, 0.95) !important;
+    }
+  </style>
+
 </head>
 <body class="selection:bg-cyan selection:text-ocean-950 bg-gradient-to-b from-[#040D1A] via-[#0A192F] to-[#062C3D] text-slate-100 overflow-x-hidden w-full max-w-full">
     <!-- =================================================================== -->
@@ -1733,7 +1746,7 @@
     <!-- =================================================================== -->
     <!-- 1. NAVBAR CHÍNH: TỐI ƯU RESPONSIVE & MỞ RỘNG TOÀN DIỆN               -->
     <!-- =================================================================== -->
-    <header class="sticky top-0 z-50 bg-[#07162C]/90 backdrop-blur-xl border-b border-sky-500/20">
+    <header class="sticky top-0 z-50 bg-[#0b132b]/95 backdrop-blur-xl border-b border-sky-500/20">
       <div class="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10 xl:px-16 flex items-center justify-between lg:grid lg:grid-cols-[max-content_1fr_max-content] h-14 sm:h-16 lg:h-20 gap-3 sm:gap-4 lg:gap-6">
           
         <!-- Cột 1: Logo & Tên CLB (Bảo đảm không bị bóp méo, luôn 1 dòng chuẩn chỉ) -->
@@ -1804,7 +1817,7 @@
       </div>
 
       <!-- Mobile Menu Dropdown / Drawer Sidebar -->
-      <div id="mobileMenu" class="hidden lg:hidden bg-[#07162C]/98 backdrop-blur-2xl border-b border-sky-500/20 px-5 py-4 space-y-3 font-semibold text-sm shadow-2xl">
+      <div id="mobileMenu" class="hidden lg:hidden bg-[#0b132b]/98 backdrop-blur-2xl border-b border-sky-500/20 px-5 py-4 space-y-3 font-semibold text-sm shadow-2xl">
         <!-- Tin vắn di động tích hợp: Chạy chữ marquee mượt mà liên tục, không bị cắt ... -->
         <div class="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-xs text-slate-200 flex items-center gap-2 overflow-hidden">
           <div class="flex-shrink-0 z-10 px-2 py-0.5 rounded-full bg-gradient-to-r from-accent-orange to-amber-500 text-white font-black text-[10px] uppercase tracking-wider shadow-glow-orange flex items-center gap-1">
@@ -1834,6 +1847,14 @@
           <a href="#community" id="mobItemCommunity" class="mobile-link block py-2 px-3 rounded-lg text-foam hover:text-cyan hover:bg-white/5 transition-colors border-b border-white/5" data-editable-id="mob_menu_community">🏆 Fan Cứng & Góp Ý</a>
           <a href="javascript:void(0)" onclick="scrollToTuyenQuan(event)" id="mobItemRecruitment" class="mobile-link block py-2 px-3 rounded-lg text-foam hover:text-cyan hover:bg-white/5 transition-colors border-b border-white/5" data-editable-id="mob_menu_recruitment">Tuyển Quân</a>
           <a href="#footer" id="mobItemFooter" class="mobile-link block py-2 px-3 rounded-lg text-foam hover:text-cyan hover:bg-white/5 transition-colors" data-editable-id="mob_menu_footer">📞 Liên Hệ Ban Truyền Thông</a>
+        </div>
+
+                <!-- Nút Cài Đặt Ứng Dụng (PWA Install Button) Gọn Gàng Trong Menu 3 Gạch -->
+        <div class="pt-2 border-t border-white/10" id="pwaMobileInstallContainer">
+          <button id="pwaInstallMobileBtn" type="button" onclick="triggerPwaInstallPrompt()" class="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500/20 via-sky-500/20 to-teal-500/20 hover:from-cyan-500/30 hover:to-teal-500/30 text-cyan border border-cyan-400/40 transition-all flex items-center justify-center gap-2 text-xs font-bold cursor-pointer shadow-lg shadow-cyan-500/10 active:scale-95">
+            <svg class="w-4 h-4 text-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            <span id="pwaInstallBtnLabel">📲 Cài Đặt Ứng Dụng (PWA)</span>
+          </button>
         </div>
 
         <!-- Nút Quản Trị trong Mobile Drawer -->
@@ -2989,7 +3010,7 @@
             <div class="relative rounded-2xl overflow-hidden bg-[#05101F] border-2 border-cyan/30 shadow-inner mb-4">
               <canvas id="graffitiCanvas" width="400" height="240" class="w-full h-[220px] sm:h-[240px] canvas-drawing-board block"></canvas>
               <!-- Nút Xóa / Viết Lại đặt trực tiếp góc dưới bảng vẽ -->
-              <button type="button" onclick="clearGraffitiCanvas()" class="absolute bottom-2.5 right-2.5 z-20 px-3 py-1.5 rounded-xl bg-[#07162C]/90 hover:bg-rose-950/80 border border-rose-500/50 text-rose-300 hover:text-white text-xs font-bold flex items-center gap-1.5 shadow-lg backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer" title="Xóa toàn bộ nét vẽ để ký lại">
+              <button type="button" onclick="clearGraffitiCanvas()" class="absolute bottom-2.5 right-2.5 z-20 px-3 py-1.5 rounded-xl bg-[#0b132b]/95 hover:bg-rose-950/80 border border-rose-500/50 text-rose-300 hover:text-white text-xs font-bold flex items-center gap-1.5 shadow-lg backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer" title="Xóa toàn bộ nét vẽ để ký lại">
                 <span>🗑️</span>
                 <span>Xóa / Viết Lại</span>
               </button>
@@ -4484,7 +4505,7 @@
   <!-- =================================================================== -->
   <!-- THANH CÔNG CỤ ĐỊNH DẠNG VĂN BẢN NỔI (FLOATING FORMATTING TOOLBAR)   -->
   <!-- =================================================================== -->
-  <div id="floatingFormatToolbar" class="hidden fixed z-50 glass-deep rounded-2xl p-2 border border-cyan/50 shadow-[0_15px_40px_rgba(0,0,0,0.8)] flex flex-wrap items-center gap-2 bg-[#07162C]/98 backdrop-blur-2xl transition-all duration-150 max-w-[95vw]">
+  <div id="floatingFormatToolbar" class="hidden fixed z-50 glass-deep rounded-2xl p-2 border border-cyan/50 shadow-[0_15px_40px_rgba(0,0,0,0.8)] flex flex-wrap items-center gap-2 bg-[#0b132b]/98 backdrop-blur-2xl transition-all duration-150 max-w-[95vw]">
     <!-- Dropdown Chọn Font Chữ (9 Font Tuyển Chọn) -->
     <div class="flex items-center gap-1">
       <span class="text-[10px] text-amber-300 font-bold hidden sm:inline">🔤 Font:</span>
@@ -5376,10 +5397,12 @@
     // =============================================================
     const SUPABASE_PROJECT_URL = 'https://ycifixbmcfjixmmjyfpb.supabase.co';
     const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_plTwcKePEHNn4Jck-Ud_Cw_0V6-xR0A';
-    const SUPABASE_TABLE_BXH = 'bxh';
+    const SUPABASE_TABLE_VIRAL_MEDIA = 'viral_media';
     const SUPABASE_TABLE_KY = 'ky';
-    const SUPABASE_TABLE_TIM = 'tim';
+    const SUPABASE_TABLE_BXH = 'bxh';
+    const SUPABASE_TABLE_SITE_SETTINGS = 'site_settings';
     const SUPABASE_TABLE_GOP_Y = 'gop_y';
+    const SUPABASE_TABLE_TIM = 'tim';
     let supabaseClient = null;
 
     function getSupabase() {
@@ -6789,20 +6812,31 @@
       }
       
       renderLeaderboard();
-      // Performance: Tải dữ liệu Supabase song song (Promise.all)
-      Promise.all([
-        typeof fetchLeaderboardFromSupabase === 'function' ? fetchLeaderboardFromSupabase() : Promise.resolve(),
-        typeof fetchSuggestionsFromSupabase === 'function' ? fetchSuggestionsFromSupabase() : Promise.resolve(),
-        typeof fetchHeartsFromSupabase === 'function' ? fetchHeartsFromSupabase() : Promise.resolve(),
-        typeof fetchGraffitiFromSupabase === 'function' ? fetchGraffitiFromSupabase() : Promise.resolve()
-      ]).then(() => {
-        console.log('[Perf] Tất cả dữ liệu Supabase đã tải song song thành công.');
-      }).catch(err => {
-        console.warn('[Perf] Một số fetch Supabase gặp lỗi:', err);
-      });
-      initLeaderboardRealtime();
-      initSuggestionsRealtime();
+      // =========================================================================
+      // ĐỒNG BỘ SONG SONG 5 BẢNG SUPABASE SIÊU TỐC VỚI PROMISE.ALL()
+      // =========================================================================
       updateSuggestionBadge();
+
+      Promise.all([
+        typeof fetchViralMediaFromSupabase === 'function' ? fetchViralMediaFromSupabase() : Promise.resolve(),
+        typeof fetchGraffitiFromSupabase === 'function' ? fetchGraffitiFromSupabase() : Promise.resolve(),
+        typeof fetchLeaderboardFromSupabase === 'function' ? fetchLeaderboardFromSupabase() : Promise.resolve(),
+        typeof fetchSiteSettingsFromSupabase === 'function' ? fetchSiteSettingsFromSupabase() : Promise.resolve(),
+        typeof fetchSuggestionsFromSupabase === 'function' ? fetchSuggestionsFromSupabase() : Promise.resolve(),
+        typeof fetchHeartsFromSupabase === 'function' ? fetchHeartsFromSupabase() : Promise.resolve()
+      ]).then(() => {
+        console.log('[Supabase] Đã tải đồng bộ song song 5 bảng thành công (viral_media, ky, bxh, site_settings, gop_y)!');
+      }).catch(err => {
+        console.warn('[Supabase] Lỗi khi tải song song các bảng:', err);
+      });
+
+      // Kích hoạt toàn bộ các kênh Realtime cho 5 bảng
+      if (typeof initViralMediaRealtime === 'function') initViralMediaRealtime();
+      if (typeof initGraffitiRealtime === 'function') initGraffitiRealtime();
+      if (typeof initLeaderboardRealtime === 'function') initLeaderboardRealtime();
+      if (typeof initSiteSettingsRealtime === 'function') initSiteSettingsRealtime();
+      if (typeof initSuggestionsRealtime === 'function') initSuggestionsRealtime();
+      if (typeof initHeartsRealtime === 'function') initHeartsRealtime();
 
       initBubbleCursor();
             initSecretKeyCodes();
@@ -11515,6 +11549,163 @@ function initGraffitiWall() {
       initGraffitiRealtime();
     }
 
+    
+    // ==========================================================================
+    // ĐỒNG BỘ BẢNG "viral_media" TRÊN SUPABASE (TOP ẤN PHẨM TRIỆU VIEW)
+    // ==========================================================================
+    window.cloudViralMedia = null;
+
+    async function fetchViralMediaFromSupabase() {
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_VIRAL_MEDIA)
+          .select('*')
+          .order('rank', { ascending: true });
+
+        if (error) {
+          console.warn('[Supabase viral_media] Lỗi tải dữ liệu viral media:', error);
+          return;
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          const cloudItems = data.map((row, idx) => {
+            const rank = Number(row.rank) || (idx + 1);
+            let defaultBadge = '✨ TOP 3 • LAN TỎA MẠNH MẼ';
+            if (rank === 1) defaultBadge = '👑 TOP 1 TRENDING';
+            else if (rank === 2) defaultBadge = '💎 TOP 2 • ĐẠT MỐC KỶ LỤC';
+
+            return {
+              id: row.id || ('viral_' + rank),
+              rank: rank,
+              type: row.type || 'video',
+              typeLabel: row.typeLabel || row.type_label || (row.type === 'album' ? '📸 Album Ảnh' : '🎬 Video Recap 4K'),
+              duration: row.duration || (rank === 1 ? '04:32' : '02:15'),
+              badge: row.badge || defaultBadge,
+              title: row.title || `Ấn phẩm tiêu điểm Top #${rank}`,
+              desc: row.desc || row.description || row.summary || 'Ấn phẩm truyền thông xuất sắc từ CLB Sóng of HT - THPT Hà Trung.',
+              thumbnail: row.thumbnail || row.image || row.image_url || 'assets/banner-song-of-ht.jpg',
+              views: row.views || (row.view_count ? `${Number(row.view_count).toLocaleString('vi-VN')} Lượt Xem` : '100.000+ Lượt Xem'),
+              likes: row.likes || (row.like_count ? `${Number(row.like_count).toLocaleString('vi-VN')} Thích` : '10K Thích'),
+              comments: row.comments || '500 Bình Luận',
+              shares: row.shares || '1.2K Chia Sẻ',
+              btnUrl: row.btnUrl || row.btn_url || row.url || row.link || '#portfolio',
+              btnText: row.btnText || row.btn_text || (rank === 1 ? 'Xem Video Đầy Đủ' : 'Xem Thêm →'),
+              visible: row.visible !== false
+            };
+          });
+
+          // Nếu Supabase chỉ có 1 hoặc 2 bài, tự động bổ sung Top 2 & Top 3 từ mặc định để không bị khuyết giao diện
+          let finalItems = [...cloudItems];
+          if (finalItems.length < 3) {
+            DEFAULT_VIRAL_MEDIA.forEach(defItem => {
+              if (!finalItems.some(item => item.rank === defItem.rank)) {
+                finalItems.push(defItem);
+              }
+            });
+            finalItems.sort((a, b) => a.rank - b.rank);
+          }
+
+          window.cloudViralMedia = finalItems;
+          try {
+            localStorage.setItem(VIRAL_MEDIA_STORAGE_KEY, JSON.stringify(finalItems));
+          } catch(e) {}
+          renderViralMedia(finalItems);
+        }
+      } catch (err) {
+        console.warn('[Supabase viral_media] Ngoại lệ khi tải viral media:', err);
+      }
+    }
+
+    function initViralMediaRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:viral_media')
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_VIRAL_MEDIA }, () => {
+            console.log('[Supabase viral_media] Cập nhật ấn phẩm tiêu điểm theo thời gian thực');
+            fetchViralMediaFromSupabase();
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('[Supabase viral_media] Lỗi realtime viral media:', err);
+      }
+    }
+
+    // ==========================================================================
+    // ĐỒNG BỘ BẢNG "site_settings" TRÊN SUPABASE (VIEW COUNTER & CUSTOM LINKS)
+    // ==========================================================================
+    let isIncrementingView = false;
+
+    async function fetchSiteSettingsFromSupabase() {
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        // 1. Tải View Counter từ site_settings
+        const { data: viewData, error: viewError } = await client
+          .from(SUPABASE_TABLE_SITE_SETTINGS)
+          .select('*')
+          .eq('key', 'view_counter')
+          .limit(1);
+
+        if (!viewError && Array.isArray(viewData) && viewData.length > 0) {
+          let val = viewData[0].value;
+          if (typeof val === 'string') {
+            try { val = JSON.parse(val); } catch(e) {}
+          }
+          let views = DEFAULT_PAGE_VIEWS;
+          let isVisible = true;
+          if (val && typeof val === 'object') {
+            views = Number(val.views ?? val.count ?? val.number ?? DEFAULT_PAGE_VIEWS) || DEFAULT_PAGE_VIEWS;
+            isVisible = val.visible !== false;
+          } else if (typeof val === 'number') {
+            views = val;
+          }
+          updateViewCounterUI(views, isVisible);
+        }
+
+        // 2. Tải Custom Links từ site_settings
+        const { data: linkData, error: linkError } = await client
+          .from(SUPABASE_TABLE_SITE_SETTINGS)
+          .select('*')
+          .eq('key', 'custom_links')
+          .limit(1);
+
+        if (!linkError && Array.isArray(linkData) && linkData.length > 0) {
+          let linksVal = linkData[0].value;
+          if (typeof linksVal === 'string') {
+            try { linksVal = JSON.parse(linksVal); } catch(e) {}
+          }
+          if (linksVal && typeof linksVal === 'object') {
+            const merged = Object.assign({}, DEFAULT_CUSTOM_LINKS, linksVal);
+            applyCustomLinksToDOM(merged);
+          }
+        }
+      } catch (err) {
+        console.warn('[Supabase site_settings] Ngoại lệ khi tải cài đặt:', err);
+      }
+    }
+
+    function initSiteSettingsRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:site_settings')
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_SITE_SETTINGS }, () => {
+            console.log('[Supabase site_settings] Cập nhật cài đặt theo thời gian thực');
+            fetchSiteSettingsFromSupabase();
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('[Supabase site_settings] Lỗi realtime site_settings:', err);
+      }
+    }
+
     async function fetchGraffitiFromSupabase() {
       const client = getSupabase();
       if (!client) return;
@@ -13519,11 +13710,11 @@ function initGraffitiWall() {
       }
     }
 
-    function renderViralMedia() {
+    function renderViralMedia(customItems = null) {
       const grid = document.getElementById('viralMediaGrid');
       if (!grid) return;
 
-      const allItems = getStoredViralMedia();
+      const allItems = (Array.isArray(customItems) && customItems.length > 0) ? customItems : getStoredViralMedia();
       const items = allItems.filter(item => item.visible !== false).sort((a, b) => a.rank - b.rank);
 
       if (items.length === 0) {
@@ -14325,6 +14516,10 @@ function initGraffitiWall() {
     window.promptChangeLeaderboardNickname = promptChangeLeaderboardNickname;
     window.updateLeaderboardLiveScore = updateLeaderboardLiveScore;
     window.fetchSuggestionsFromSupabase = fetchSuggestionsFromSupabase;
+    window.fetchViralMediaFromSupabase = fetchViralMediaFromSupabase;
+    window.fetchSiteSettingsFromSupabase = fetchSiteSettingsFromSupabase;
+    window.initViralMediaRealtime = initViralMediaRealtime;
+    window.initSiteSettingsRealtime = initSiteSettingsRealtime;
     window.initSuggestionsRealtime = initSuggestionsRealtime;
     window.calculateUserContributionScore = calculateUserContributionScore;
     window.renderLeaderboard = renderLeaderboard;
@@ -15318,16 +15513,90 @@ function initGraffitiWall() {
   </div>
 
 
-  <!-- Progressive Web App Service Worker Registration -->
+  
+
+
+  <!-- =================================================================== -->
+  <!-- PROGRESSIVE WEB APP (PWA) - SERVICE WORKER & CÀI ĐẶT ỨNG DỤNG       -->
+  <!-- =================================================================== -->
   <script>
+    let deferredInstallPrompt = null;
+
+    function isPwaInstalled() {
+      return window.matchMedia('(display-mode: standalone)').matches || 
+             window.navigator.standalone === true;
+    }
+
+    function updatePwaUi() {
+      const pwaBtn = document.getElementById('pwaInstallMobileBtn');
+      const label = document.getElementById('pwaInstallBtnLabel');
+      if (!pwaBtn) return;
+
+      if (isPwaInstalled()) {
+        if (label) label.textContent = '✅ Đã Cài Đặt Ứng Dụng';
+        pwaBtn.classList.add('opacity-70');
+      } else {
+        if (label) label.textContent = '📲 Cài Đặt Ứng Dụng (PWA)';
+        pwaBtn.classList.remove('opacity-70');
+      }
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      updatePwaUi();
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      updatePwaUi();
+      if (typeof showToast === 'function') {
+        showToast('🎉 Chúc mừng! Bạn đã cài đặt ứng dụng Sóng Of HT thành công!');
+      }
+    });
+
+    async function triggerPwaInstallPrompt() {
+      const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent.toLowerCase());
+
+      if (isPwaInstalled()) {
+        if (typeof showToast === 'function') {
+          showToast('ℹ️ Bạn đang mở Sóng Of HT ở chế độ ứng dụng!');
+        }
+        return;
+      }
+
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        try {
+          const choiceResult = await deferredInstallPrompt.userChoice;
+          console.log('[PWA] Phản hồi cài đặt:', choiceResult.outcome);
+        } catch (err) {
+          console.warn('[PWA] Lỗi prompt:', err);
+        }
+        deferredInstallPrompt = null;
+      } else if (isIos) {
+        if (typeof showToast === 'function') {
+          showToast('📱 Trên iPhone: Bấm nút Chia sẻ (biểu tượng mũi tên) rồi chọn "Thêm vào MH chính" để cài đặt!');
+        } else {
+          alert('Trên iPhone: Bấm nút Chia sẻ rồi chọn "Thêm vào MH chính" để cài đặt ứng dụng!');
+        }
+      } else {
+        if (typeof showToast === 'function') {
+          showToast('💡 Bấm biểu tượng ⠇ ở góc phải trình duyệt và chọn "Cài đặt ứng dụng" hoặc "Thêm vào màn hình chính"');
+        }
+      }
+    }
+    window.triggerPwaInstallPrompt = triggerPwaInstallPrompt;
+
+    // Đăng ký Service Worker an toàn
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
         navigator.serviceWorker.register('./sw.js')
           .then(function(reg) {
-            console.log('[PWA] Service Worker registered with scope:', reg.scope);
+            console.log('[PWA] Service Worker hoạt động thành công:', reg.scope);
           })
           .catch(function(err) {
-            console.log('[PWA] Service Worker registration failed:', err);
+            console.warn('[PWA] Đăng ký Service Worker thất bại:', err);
           });
       });
     }
