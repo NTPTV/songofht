@@ -7960,6 +7960,7 @@
       if (typeof renderBirthdayBoard === 'function') renderBirthdayBoard();
       renderLeaderboard();
       init3DTilt();
+      if (typeof fetchSiteSettingsFromSupabase === 'function') fetchSiteSettingsFromSupabase();
 
       if (showWelcomeToast) {
         showToast('Đăng nhập Quản trị viên thành công! Bạn có thể sửa chữ, đổi ảnh và quản lý bài viết.');
@@ -8078,6 +8079,7 @@
           JSON.stringify(cleanPosts),
           '⚠️ Bộ nhớ trình duyệt đã đầy, không thể lưu thêm ảnh nặng. Vui lòng dùng link ảnh online thay vì tải tệp trực tiếp!'
         );
+        if (success) syncSiteSettingToSupabase('portfolio_posts', cleanPosts);
 
         renderPortfolio();
         if (typeof renderAdminPostsList === 'function') renderAdminPostsList();
@@ -8116,6 +8118,7 @@
 
     function savePortfolioCategories(categories) {
       localStorage.setItem(STORAGE_KEY_CATEGORIES, JSON.stringify(categories));
+      syncSiteSettingToSupabase('portfolio_categories', categories);
       renderCategoryFilterTabs();
       updateCategorySelectOptions();
       renderPortfolio();
@@ -11649,6 +11652,54 @@ function initGraffitiWall() {
     // ==========================================================================
     let isIncrementingView = false;
 
+    async function readSiteSettingFromSupabase(client, settingKey) {
+      const { data, error } = await client
+        .from(SUPABASE_TABLE_SITE_SETTINGS)
+        .select('value')
+        .eq('key', settingKey)
+        .limit(1);
+      if (error) {
+        console.warn(`[Supabase site_settings] Không tải được ${settingKey}:`, error);
+        return null;
+      }
+      if (!Array.isArray(data) || data.length === 0) return null;
+      let value = data[0].value;
+      if (typeof value === 'string') {
+        try { value = JSON.parse(value); } catch (e) {}
+      }
+      return value;
+    }
+
+    async function syncSiteSettingToSupabase(settingKey, value) {
+      const client = getSupabase();
+      if (!client) {
+        console.warn(`[Supabase site_settings] Chưa có kết nối; ${settingKey} mới chỉ lưu trên thiết bị này.`);
+        return false;
+      }
+      try {
+        const { data, error: lookupError } = await client
+          .from(SUPABASE_TABLE_SITE_SETTINGS)
+          .select('key')
+          .eq('key', settingKey)
+          .limit(1);
+        if (lookupError) throw lookupError;
+
+        const payload = { value: JSON.stringify(value) };
+        const result = Array.isArray(data) && data.length > 0
+          ? await client.from(SUPABASE_TABLE_SITE_SETTINGS).update(payload).eq('key', settingKey)
+          : await client.from(SUPABASE_TABLE_SITE_SETTINGS).insert([{ key: settingKey, ...payload }]);
+        if (result.error) throw result.error;
+        console.info(`[Supabase site_settings] Đã đồng bộ ${settingKey}.`);
+        return true;
+      } catch (err) {
+        console.warn(`[Supabase site_settings] Lỗi đồng bộ ${settingKey}:`, err);
+        if (typeof showToast === 'function') {
+          showToast('⚠️ Đã lưu trên thiết bị này nhưng chưa đồng bộ được lên máy chủ. Kiểm tra quyền ghi Supabase.');
+        }
+        return false;
+      }
+    }
+
     async function fetchSiteSettingsFromSupabase() {
       const client = getSupabase();
       if (!client) return;
@@ -11693,6 +11744,26 @@ function initGraffitiWall() {
             const merged = Object.assign({}, DEFAULT_CUSTOM_LINKS, linksVal);
             applyCustomLinksToDOM(merged);
           }
+        }
+
+        const cloudPosts = await readSiteSettingFromSupabase(client, 'portfolio_posts');
+        if (Array.isArray(cloudPosts)) {
+          localStorage.setItem(STORAGE_KEY_PORTFOLIO, JSON.stringify(cloudPosts));
+          renderPortfolio();
+          if (typeof renderAdminPostsList === 'function') renderAdminPostsList();
+          if (typeof renderAdminFilterTagsManager === 'function') renderAdminFilterTagsManager();
+        } else if (isAdminActive) {
+          await syncSiteSettingToSupabase('portfolio_posts', getStoredPortfolio());
+        }
+
+        const cloudCategories = await readSiteSettingFromSupabase(client, 'portfolio_categories');
+        if (Array.isArray(cloudCategories) && cloudCategories.length > 0) {
+          localStorage.setItem(STORAGE_KEY_CATEGORIES, JSON.stringify(cloudCategories));
+          renderCategoryFilterTabs();
+          updateCategorySelectOptions();
+          renderPortfolio();
+        } else if (isAdminActive) {
+          await syncSiteSettingToSupabase('portfolio_categories', getPortfolioCategories());
         }
       } catch (err) {
         console.warn('[Supabase site_settings] Ngoại lệ khi tải cài đặt:', err);
@@ -15170,7 +15241,7 @@ function initGraffitiWall() {
       try {
         client
           .channel('realtime:gop_y')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: SUPABASE_TABLE_GOP_Y }, (payload) => {
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_GOP_Y }, (payload) => {
             console.log('[Supabase gop_y] Nhận ý tưởng mới theo thời gian thực:', payload);
             fetchSuggestionsFromSupabase();
           })
@@ -15237,7 +15308,9 @@ function initGraffitiWall() {
         `;
       }
 
-      // 2. Insert trực tiếp lên Supabase bảng 'gop_y'
+      // 2. Gửi lên Supabase; phân biệt rõ lỗi đồng bộ với lưu tạm cục bộ.
+      let suggestionSynced = false;
+      let suggestionSyncError = null;
       const client = getSupabase();
       if (client) {
         try {
@@ -15250,15 +15323,19 @@ function initGraffitiWall() {
             }]);
 
           if (error) {
+            suggestionSyncError = error;
             console.warn('[Supabase gop_y] Lỗi khi insert vào bảng gop_y:', error);
           } else {
+            suggestionSynced = true;
             console.log('[Supabase gop_y] Đã gửi ý tưởng lên Supabase thành công:', data);
-            // Đồng bộ lại số lượng chính xác nhất từ Supabase
             await fetchSuggestionsFromSupabase();
           }
         } catch (err) {
+          suggestionSyncError = err;
           console.warn('[Supabase gop_y] Ngoại lệ khi insert:', err);
         }
+      } else {
+        suggestionSyncError = new Error('Không tạo được kết nối Supabase');
       }
 
       // Khôi phục trạng thái nút bấm
@@ -15271,7 +15348,12 @@ function initGraffitiWall() {
         fireConfetti('suggestion');
       }
       if (typeof showToast === 'function') {
-        showToast('💌 Cảm ơn bạn! Ý tưởng đã được chuyển thẳng tới Ban Chủ Nhiệm Sóng Of HT!');
+        if (suggestionSynced) {
+          showToast('💌 Cảm ơn bạn! Góp ý đã được đồng bộ lên Ban Chủ Nhiệm Sóng Of HT.');
+        } else {
+          const reason = suggestionSyncError && suggestionSyncError.message ? ` (${suggestionSyncError.message})` : '';
+          showToast(`⚠️ Góp ý đang chỉ lưu trên thiết bị này, chưa đồng bộ lên máy chủ${reason}.`);
+        }
       }
     }
 
@@ -15344,14 +15426,28 @@ function initGraffitiWall() {
       }
     }
 
-    function clearAllSuggestions() {
+    async function clearAllSuggestions() {
       if (!confirm('Bạn có chắc chắn muốn xóa TOÀN BỘ thư góp ý không?')) return;
       localStorage.setItem(STORAGE_KEY_SUGGESTIONS, JSON.stringify([]));
       updateSuggestionBadge();
       openAdminSuggestionsModal();
-      if (typeof showToast === 'function') {
-        showToast('Đã xóa sạch hòm thư góp ý!');
+
+      const client = getSupabase();
+      if (!client) {
+        if (typeof showToast === 'function') showToast('⚠️ Đã xóa trên thiết bị này; chưa kết nối để xóa trên máy chủ.');
+        return;
       }
+      const { error } = await client
+        .from(SUPABASE_TABLE_GOP_Y)
+        .delete()
+        .not('id', 'is', null);
+      if (error) {
+        console.warn('[Supabase gop_y] Lỗi khi xóa toàn bộ góp ý:', error);
+        if (typeof showToast === 'function') showToast('⚠️ Đã xóa cục bộ nhưng chưa xóa được trên máy chủ. Kiểm tra quyền Supabase.');
+        return;
+      }
+      await fetchSuggestionsFromSupabase();
+      if (typeof showToast === 'function') showToast('Đã xóa sạch hòm thư góp ý trên máy chủ.');
     }
 
     // Expose helpers globally
