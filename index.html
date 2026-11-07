@@ -11733,12 +11733,10 @@ function initGraffitiWall() {
 
         if (Array.isArray(data) && data.length > 0) {
           const cloudNotes = data.map((row, idx) => {
-            let dateStr = '05/11/2026';
+            let dateStr = formatGraffitiDate();
             if (row.created_at) {
-              try {
-                const d = new Date(row.created_at);
-                dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-              } catch (e) {}
+              const createdAt = new Date(row.created_at);
+              if (!Number.isNaN(createdAt.getTime())) dateStr = formatGraffitiDate(createdAt);
             }
             return {
               id: row.id || ('cloud_' + idx),
@@ -11841,6 +11839,15 @@ function initGraffitiWall() {
       }
     }
 
+    function formatGraffitiDate(date = new Date()) {
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }).format(date);
+    }
+
     function getSavedGraffiti() {
       const raw = localStorage.getItem(STORAGE_KEY_GRAFFITI);
       if (!raw) return DEFAULT_GRAFFITI_NOTES;
@@ -11868,8 +11875,7 @@ function initGraffitiWall() {
         drawingData = graffitiCanvas.toDataURL('image/png');
       }
 
-      const today = new Date();
-      const dateStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+      const dateStr = formatGraffitiDate(new Date());
 
       const newEntry = {
         id: 'note_' + Date.now(),
@@ -14664,6 +14670,18 @@ function initGraffitiWall() {
       }
     }
 
+    function clearLegacyLeaderboardPlaceholder() {
+      const placeholder = 'Bạn (Fan Cứng HT)';
+      if (localStorage.getItem('song_of_ht_user_nickname') !== placeholder) return;
+
+      localStorage.removeItem('song_of_ht_user_nickname');
+      const entries = getSavedLeaderboard();
+      const cleaned = Array.isArray(entries)
+        ? entries.filter(entry => String(entry?.name || '').trim().toLowerCase() !== placeholder.toLowerCase())
+        : [];
+      localStorage.setItem(STORAGE_KEY_LEADERBOARD, JSON.stringify(cleaned));
+    }
+
     let bxhSyncTimer = null;
 
     async function fetchLeaderboardFromSupabase() {
@@ -14683,7 +14701,9 @@ function initGraffitiWall() {
         }
 
         if (Array.isArray(data) && data.length > 0) {
-          const cloudEntries = data.map((row, idx) => {
+          const validRows = data.filter(row => String(row?.name || '').trim().toLowerCase() !== 'bạn (fan cứng ht)');
+          if (validRows.length === 0) return;
+          const cloudEntries = validRows.map((row, idx) => {
             let medal = '⭐';
             if (idx === 0) medal = '🥇';
             else if (idx === 1) medal = '🥈';
@@ -14723,6 +14743,7 @@ function initGraffitiWall() {
     }
 
     function renderLeaderboard(customEntries) {
+      clearLegacyLeaderboardPlaceholder();
       const listContainer = document.getElementById('leaderboardEntriesList');
       if (!listContainer) return;
       const entries = (customEntries && Array.isArray(customEntries)) ? customEntries : getSavedLeaderboard();
@@ -14923,14 +14944,16 @@ function initGraffitiWall() {
 
     // Tự động đồng bộ điểm real-time vào BXH Fan Cứng
     function syncLiveScoreToLeaderboard() {
-      let savedUserNick = localStorage.getItem('song_of_ht_user_nickname');
-      if (!savedUserNick) {
-        savedUserNick = 'Bạn (Fan Cứng HT)';
-        localStorage.setItem('song_of_ht_user_nickname', savedUserNick);
-      }
+      clearLegacyLeaderboardPlaceholder();
+      const savedUserNick = (localStorage.getItem('song_of_ht_user_nickname') || '').trim();
       const greeting = document.getElementById('leaderboardUserGreeting');
       const form = document.getElementById('leaderboardRegisterForm');
       const nameEl = document.getElementById('registeredUserDisplayName');
+      if (!savedUserNick) {
+        if (greeting) greeting.classList.add('hidden');
+        if (form) form.classList.remove('hidden');
+        return;
+      }
       if (greeting && form && nameEl) {
         nameEl.textContent = savedUserNick;
         greeting.classList.remove('hidden');
