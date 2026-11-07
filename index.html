@@ -6,10 +6,12 @@
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#0b132b" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Sóng Of HT" />
-  <link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   
@@ -15186,7 +15188,7 @@ function initGraffitiWall() {
       if (!client) return;
 
       try {
-        const { data, error, count } = await client
+        let { data, error, count } = await client
           .from(SUPABASE_TABLE_GOP_Y)
           .select('*', { count: 'exact' })
           .order('created_at', { ascending: false });
@@ -15197,6 +15199,50 @@ function initGraffitiWall() {
         }
 
         if (Array.isArray(data)) {
+          // Gửi lại các góp ý từng bị lưu cục bộ khi schema cũ từ chối đồng bộ.
+          // ID của góp ý mới dùng Date.now(); loại bỏ hai mục demo sug_1/sug_2.
+          const localPending = getSavedSuggestions().filter(item =>
+            !item.isCloud && /^sug_\d{12,}$/.test(String(item.id || ''))
+          );
+          const makeKey = (name, topic, message) => JSON.stringify([
+            String(name || '').trim().toLowerCase(),
+            String(topic || '').trim().toLowerCase(),
+            String(message || '').trim()
+          ]);
+          const existingKeys = new Set(data.map(row => makeKey(
+            row.sender_name || row.name, row.topic, row.message || row.content
+          )));
+          const pendingToRetry = [];
+          for (const item of localPending) {
+            const key = makeKey(item.name, item.topic, item.message);
+            if (!existingKeys.has(key)) {
+              existingKeys.add(key);
+              pendingToRetry.push(item);
+            }
+          }
+
+          if (pendingToRetry.length > 0) {
+            const { error: retryError } = await client
+              .from(SUPABASE_TABLE_GOP_Y)
+              .insert(pendingToRetry.map(item => ({
+                sender_name: item.name || 'Bạn học sinh ẩn danh',
+                topic: item.topic || '💡 Ý Tưởng Video / Kịch Bản Mới',
+                message: item.message || ''
+              })));
+            if (retryError) {
+              console.warn('[Supabase gop_y] Chưa đồng bộ được góp ý cũ:', retryError);
+            } else {
+              const refreshed = await client
+                .from(SUPABASE_TABLE_GOP_Y)
+                .select('*', { count: 'exact' })
+                .order('created_at', { ascending: false });
+              if (!refreshed.error && Array.isArray(refreshed.data)) {
+                data = refreshed.data;
+                count = refreshed.count;
+              }
+            }
+          }
+
           const cloudSuggestions = data.map((row, idx) => {
             let dateStr = 'Vừa xong';
             if (row.created_at) {
@@ -15223,17 +15269,19 @@ function initGraffitiWall() {
             };
           });
 
-          // Lưu cache vào LocalStorage
-          localStorage.setItem(STORAGE_KEY_SUGGESTIONS, JSON.stringify(cloudSuggestions));
-          const totalCount = typeof count === 'number' ? count : cloudSuggestions.length;
-          updateSuggestionBadge(totalCount);
+          const cloudKeys = new Set(cloudSuggestions.map(item => makeKey(item.name, item.topic, item.message)));
+          const stillPending = localPending
+            .filter(item => !cloudKeys.has(makeKey(item.name, item.topic, item.message)))
+            .map(item => ({ ...item, pendingSync: true }));
+          localStorage.setItem(STORAGE_KEY_SUGGESTIONS, JSON.stringify([...cloudSuggestions, ...stillPending]));
+          const cloudCount = typeof count === 'number' ? count : cloudSuggestions.length;
+          updateSuggestionBadge(cloudCount + stillPending.length);
         }
       } catch (err) {
         console.warn('[Supabase gop_y] Ngoại lệ khi fetch gop_y:', err);
       }
     }
 
-    // Lắng nghe Realtime bảng 'gop_y' trên Supabase
     function initSuggestionsRealtime() {
       const client = getSupabase();
       if (!client || typeof client.channel !== 'function') return;
@@ -15319,7 +15367,7 @@ function initGraffitiWall() {
             .insert([{
               sender_name: sender,
               topic: topic,
-              content: message
+              message: message
             }]);
 
           if (error) {
