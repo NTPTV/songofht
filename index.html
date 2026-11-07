@@ -5342,9 +5342,16 @@
     // =============================================================
     const SUPABASE_PROJECT_URL = 'https://ycifixbmcfjixmmjyfpb.supabase.co';
     const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_plTwcKePEHNn4Jck-Ud_Cw_0V6-xR0A';
-    const SUPABASE_TABLE_BXH = 'bxh';
-    const SUPABASE_TABLE_KY = 'ky';
     const SUPABASE_TABLE_TIM = 'tim';
+    const SUPABASE_TABLE_KY = 'ky';
+    const SUPABASE_TABLE_BXH = 'bxh';
+    const SUPABASE_TABLE_THONG_KE = 'thong_ke';
+    const SUPABASE_TABLE_SAN_PHAM = 'san_pham';
+    const SUPABASE_TABLE_VE_CHUNG_MINH = 've_chung_minh';
+    const SUPABASE_TABLE_VIRAL_MEDIA = 'viral_media';
+    const SUPABASE_TABLE_THANH_VIEN = 'thanh_vien';
+    const SUPABASE_TABLE_THONG_KE_CHI_TIET = 'thong_ke_chi_tiet';
+    const SUPABASE_TABLE_SITE_SETTINGS = 'site_settings';
     let supabaseClient = null;
 
     function getSupabase() {
@@ -5928,15 +5935,128 @@
     const STORAGE_KEY_PAGE_VIEWS = 'pageViews';
     const STORAGE_KEY_VIEW_VISIBLE = 'isViewVisible';
     const DEFAULT_PAGE_VIEWS = 1022;
+    window.cloudViewCounter = null;
+    let isIncrementingView = false;
+
+    // Tải thông tin lượt xem và trạng thái ẩn/hiện trực tiếp từ bảng 'site_settings' trên Supabase
+    async function fetchViewCounterFromSupabase() {
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_SITE_SETTINGS)
+          .select('*')
+          .eq('key', 'view_counter')
+          .limit(1);
+
+        if (error) {
+          console.warn('[Supabase site_settings] Lỗi tải view_counter:', error);
+          return;
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          let val = data[0].value;
+          if (typeof val === 'string') {
+            try { val = JSON.parse(val); } catch(e) {}
+          }
+
+          let views = DEFAULT_PAGE_VIEWS;
+          let isVisible = true;
+
+          if (val && typeof val === 'object') {
+            views = Number(val.views ?? val.count ?? val.number ?? DEFAULT_PAGE_VIEWS) || DEFAULT_PAGE_VIEWS;
+            isVisible = val.visible !== false;
+          } else if (typeof val === 'number') {
+            views = val;
+          }
+
+          window.cloudViewCounter = { views, visible: isVisible };
+          try {
+            localStorage.setItem(STORAGE_KEY_PAGE_VIEWS, views);
+            localStorage.setItem(STORAGE_KEY_VIEW_VISIBLE, isVisible ? 'true' : 'false');
+          } catch(e) {}
+
+          updateViewCounterUI(views, isVisible);
+        } else {
+          // Khởi tạo dòng view_counter đầu tiên trên Supabase nếu chưa tồn tại
+          const initialViews = parseInt(localStorage.getItem(STORAGE_KEY_PAGE_VIEWS), 10) || DEFAULT_PAGE_VIEWS;
+          const initialVis = localStorage.getItem(STORAGE_KEY_VIEW_VISIBLE) !== 'false';
+          await client.from(SUPABASE_TABLE_SITE_SETTINGS).upsert({
+            key: 'view_counter',
+            value: { views: initialViews, visible: initialVis }
+          }, { onConflict: 'key' });
+        }
+      } catch (err) {
+        console.warn('[Supabase site_settings] Ngoại lệ khi tải view_counter:', err);
+      }
+    }
+
+    // Tự động tăng lượt xem khi có khách truy cập và cập nhật lên Supabase
+    async function incrementViewCounterOnSupabase() {
+      if (isIncrementingView) return;
+      const isAdminLogged = (typeof isUserAdmin === 'function' ? isUserAdmin() : (localStorage.getItem(STORAGE_KEY_ADMIN) === 'true' || isAdminActive));
+      if (isAdminLogged) return; // Không tính lượt xem của Quản trị viên
+
+      // Chống spam tăng view khi reload liên tục trong cùng phiên
+      const sessionCounted = sessionStorage.getItem('song_of_ht_session_counted');
+      if (sessionCounted === 'true') {
+        fetchViewCounterFromSupabase();
+        return;
+      }
+
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        isIncrementingView = true;
+        sessionStorage.setItem('song_of_ht_session_counted', 'true');
+
+        const { data } = await client
+          .from(SUPABASE_TABLE_SITE_SETTINGS)
+          .select('*')
+          .eq('key', 'view_counter')
+          .limit(1);
+
+        let curViews = DEFAULT_PAGE_VIEWS;
+        let curVis = true;
+
+        if (data && data.length > 0) {
+          let val = data[0].value;
+          if (typeof val === 'string') {
+            try { val = JSON.parse(val); } catch(e) {}
+          }
+          if (val && typeof val === 'object') {
+            curViews = Number(val.views ?? val.count ?? DEFAULT_PAGE_VIEWS) || DEFAULT_PAGE_VIEWS;
+            curVis = val.visible !== false;
+          }
+        }
+
+        const newViews = curViews + 1;
+        await client.from(SUPABASE_TABLE_SITE_SETTINGS).upsert({
+          key: 'view_counter',
+          value: { views: newViews, visible: curVis }
+        }, { onConflict: 'key' });
+
+        window.cloudViewCounter = { views: newViews, visible: curVis };
+        try {
+          localStorage.setItem(STORAGE_KEY_PAGE_VIEWS, newViews);
+          localStorage.setItem(STORAGE_KEY_VIEW_VISIBLE, curVis ? 'true' : 'false');
+        } catch(e) {}
+
+        updateViewCounterUI(newViews, curVis);
+        console.log(`[Supabase site_settings] Lượt truy cập mới: ${newViews}`);
+      } catch (e) {
+        console.warn('[Supabase site_settings] Lỗi khi tăng lượt xem:', e);
+      } finally {
+        isIncrementingView = false;
+      }
+    }
 
     function initViewCounter() {
       let views = localStorage.getItem(STORAGE_KEY_PAGE_VIEWS);
       if (views === null || isNaN(parseInt(views, 10))) {
-        // Fallback kiểm tra key phụ nếu có
-        views = localStorage.getItem('song_of_ht_page_views');
-        if (views === null || isNaN(parseInt(views, 10))) {
-          views = DEFAULT_PAGE_VIEWS;
-        }
+        views = DEFAULT_PAGE_VIEWS;
         localStorage.setItem(STORAGE_KEY_PAGE_VIEWS, views);
       } else {
         views = parseInt(views, 10);
@@ -5950,15 +6070,13 @@
         isVisible = (isVisible === 'true' || isVisible === true);
       }
 
-      // Tự động tăng +1 khi load trang NẾU KHÔNG PHẢI LÀ ADMIN
-      const isAdminLogged = (localStorage.getItem(STORAGE_KEY_ADMIN) === 'true' || isAdminActive);
-      if (!isAdminLogged) {
-        views += 1;
-        localStorage.setItem(STORAGE_KEY_PAGE_VIEWS, views);
-      }
-
       updateViewCounterUI(views, isVisible);
+
+      // Đọc và tăng lượt xem trực tiếp với Supabase
+      incrementViewCounterOnSupabase();
     }
+    window.initViewCounter = initViewCounter;
+    window.fetchViewCounterFromSupabase = fetchViewCounterFromSupabase;
 
     function updateViewCounterUI(views, isVisible) {
       const displayEl = document.getElementById('view-counter-display');
@@ -5991,21 +6109,7 @@
         const formatted = num.toLocaleString('vi-VN');
         if (displayEl) displayEl.textContent = formatted;
         if (adminBarCountEl) adminBarCountEl.textContent = formatted;
-        localStorage.setItem(STORAGE_KEY_PAGE_VIEWS, num);
       }
-    }
-
-    // Xem trước thời gian thực khi Admin bật/tắt hiển thị (onchange)
-    function previewViewVisible(isChecked) {
-      const containerEl = document.getElementById('view-counter-container');
-      if (containerEl) {
-        if (isChecked) {
-          containerEl.classList.remove('hidden');
-        } else {
-          containerEl.classList.add('hidden');
-        }
-      }
-      localStorage.setItem(STORAGE_KEY_VIEW_VISIBLE, isChecked ? 'true' : 'false');
     }
 
     function openViewCounterModal() {
@@ -6014,27 +6118,26 @@
       if (!modal) return;
       const views = parseInt(localStorage.getItem(STORAGE_KEY_PAGE_VIEWS) || DEFAULT_PAGE_VIEWS, 10);
       const isVisible = localStorage.getItem(STORAGE_KEY_VIEW_VISIBLE) !== 'false';
+
       const inputEl = document.getElementById('admin_page_views_input');
       const checkEl = document.getElementById('admin_views_visible_checkbox');
       if (inputEl) inputEl.value = views;
       if (checkEl) checkEl.checked = isVisible;
+
       modal.classList.remove('hidden');
       modal.classList.add('flex');
     }
 
     function closeViewCounterModal() {
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
-      document.body.style.position = '';
-      activeModalCount = 0;
-      if (typeof unlockBodyScroll === 'function') unlockBodyScroll(true);
+      unlockBodyScroll(true);
       const modal = document.getElementById('viewCounterModal');
       if (!modal) return;
       modal.classList.remove('flex');
       modal.classList.add('hidden');
     }
 
-    function handleSaveViewCounter(e) {
+    // Lưu cấu hình lượt xem: Upsert trực tiếp vào bảng 'site_settings' trên Supabase
+    async function handleSaveViewCounter(e) {
       if (e && e.preventDefault) e.preventDefault();
       const inputEl = document.getElementById('admin_page_views_input');
       const checkEl = document.getElementById('admin_views_visible_checkbox');
@@ -6043,11 +6146,27 @@
 
       localStorage.setItem(STORAGE_KEY_PAGE_VIEWS, views);
       localStorage.setItem(STORAGE_KEY_VIEW_VISIBLE, isVisible ? 'true' : 'false');
+      window.cloudViewCounter = { views, visible: isVisible };
 
       updateViewCounterUI(views, isVisible);
       closeViewCounterModal();
+
+      // Đẩy dữ liệu lên bảng 'site_settings'
+      const client = getSupabase();
+      if (client) {
+        try {
+          await client.from(SUPABASE_TABLE_SITE_SETTINGS).upsert({
+            key: 'view_counter',
+            value: { views, visible: isVisible }
+          }, { onConflict: 'key' });
+          console.log('[Supabase site_settings] Đã lưu view_counter lên đám mây!');
+        } catch (err) {
+          console.warn('[Supabase site_settings] Lỗi khi lưu view_counter:', err);
+        }
+      }
+
       if (typeof showToast === 'function') {
-        showToast('Đã lưu cấu hình bộ đếm lượt xem! 👁');
+        showToast('✅ Đã lưu và đồng bộ bộ đếm lượt xem lên đám mây! 👁');
       }
     }
 
@@ -6828,6 +6947,26 @@
       initBgmPlayer();
       initTickerConfig();
       initGraffitiWall();
+      fetchThongKeFromSupabase();
+      initThongKeRealtime();
+      fetchCustomLinksFromSupabase();
+      initSiteSettingsRealtime();
+      fetchStatDetailsFromSupabase();
+      initStatDetailsRealtime();
+      fetchVeChungMinhFromSupabase();
+      initVeChungMinhRealtime();
+      fetchViralMediaFromSupabase();
+      initViralMediaRealtime();
+      fetchMembersFromSupabase();
+      initMembersRealtime();
+      fetchProductsFromSupabase();
+      initProductsRealtime();
+      fetchLeaderboardFromSupabase();
+      initLeaderboardRealtime();
+      const initialUserNick = localStorage.getItem('song_of_ht_user_nickname');
+      if (initialUserNick) {
+        fetchUserScoreFromSupabase(initialUserNick);
+      }
 
       // 8. Khởi động Đồng hồ đếm ngược kỳ thi THPT
       initExamCountdown();
@@ -7021,6 +7160,7 @@
     // ENGINE: QUẢN TRỊ LIÊN KẾT NHANH & KÊNH CHÍNH THỨC (NAME + URL)
     // -------------------------------------------------------------
     const STORAGE_KEY_CUSTOM_LINKS = 'song_of_ht_custom_links_v2';
+    window.cloudCustomLinks = null;
 
     const DEFAULT_CUSTOM_LINKS = {
   "school_fb": {
@@ -7045,7 +7185,49 @@
   }
 };
 
+    // Tải danh sách liên kết trực tiếp từ khóa 'custom_links' trong bảng 'site_settings'
+    async function fetchCustomLinksFromSupabase() {
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_SITE_SETTINGS)
+          .select('*')
+          .eq('key', 'custom_links')
+          .limit(1);
+
+        if (error) {
+          console.warn('[Supabase site_settings] Lỗi tải custom_links:', error);
+          return;
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          let linksVal = data[0].value;
+          if (typeof linksVal === 'string') {
+            try { linksVal = JSON.parse(linksVal); } catch(e) {}
+          }
+
+          if (linksVal && typeof linksVal === 'object') {
+            const merged = Object.assign({}, DEFAULT_CUSTOM_LINKS, linksVal);
+            window.cloudCustomLinks = merged;
+            try {
+              localStorage.setItem(STORAGE_KEY_CUSTOM_LINKS, JSON.stringify(merged));
+            } catch(e) {}
+            applyCustomLinksToDOM(merged);
+            console.log('[Supabase site_settings] Đã đồng bộ liên kết & mạng xã hội từ đám mây!');
+          }
+        }
+      } catch (err) {
+        console.warn('[Supabase site_settings] Ngoại lệ khi tải custom_links:', err);
+      }
+    }
+    window.fetchCustomLinksFromSupabase = fetchCustomLinksFromSupabase;
+
     function getCustomLinks() {
+      if (window.cloudCustomLinks && typeof window.cloudCustomLinks === 'object') {
+        return Object.assign({}, DEFAULT_CUSTOM_LINKS, window.cloudCustomLinks);
+      }
       try {
         const saved = localStorage.getItem(STORAGE_KEY_CUSTOM_LINKS);
         if (saved) return Object.assign({}, DEFAULT_CUSTOM_LINKS, JSON.parse(saved));
@@ -7059,102 +7241,86 @@
       // 1. Fanpage Trường THPT Hà Trung
       const elSchool = document.querySelector('[data-editable-id="footer_link_school_fb"]');
       if (elSchool) {
-        elSchool.href = links.school_fb.url;
+        if (links.school_fb && links.school_fb.url) elSchool.href = links.school_fb.url;
         const textSpan = elSchool.querySelector('span:not(.text-cyan)');
-        if (textSpan) textSpan.textContent = links.school_fb.text;
+        if (textSpan && links.school_fb && links.school_fb.text) textSpan.textContent = links.school_fb.text;
       }
 
       // 2. Đoàn Trường THPT Hà Trung
       const elDoan = document.querySelector('[data-editable-id="footer_link_doan_fb"]');
       if (elDoan) {
-        elDoan.href = links.doan_fb.url;
+        if (links.doan_fb && links.doan_fb.url) elDoan.href = links.doan_fb.url;
         const textSpan = elDoan.querySelector('span:not(.text-cyan)');
-        if (textSpan) textSpan.textContent = links.doan_fb.text;
+        if (textSpan && links.doan_fb && links.doan_fb.text) textSpan.textContent = links.doan_fb.text;
       }
 
       // 3. Fanpage Sóng Of HT
       const elFb = document.querySelector('[data-editable-id="footer_link_fb"]');
       if (elFb) {
-        elFb.textContent = links.page_fb.text;
+        if (links.page_fb && links.page_fb.text) elFb.textContent = links.page_fb.text;
         const parentA = elFb.closest('a');
-        if (parentA) parentA.href = links.page_fb.url;
+        if (parentA && links.page_fb && links.page_fb.url) parentA.href = links.page_fb.url;
       }
 
       // 4. Kênh TikTok Sóng Of HT
       const elTt = document.querySelector('[data-editable-id="footer_link_tt"]');
       if (elTt) {
-        elTt.textContent = links.page_tt.text;
+        if (links.page_tt && links.page_tt.text) elTt.textContent = links.page_tt.text;
         const parentA = elTt.closest('a');
-        if (parentA) parentA.href = links.page_tt.url;
+        if (parentA && links.page_tt && links.page_tt.url) parentA.href = links.page_tt.url;
       }
 
       // 5. Tuyển quân Google Forms Links
-      // Link Google Form chính thức áp dụng cho nút Nộp Đơn Ứng Tuyển Ngay
-      const recruitFormBtn = document.querySelector('[data-editable-id="recruit_btn_text"]');
-      if (recruitFormBtn) {
+      const recruitFormBtn = document.getElementById('heroRecruitmentBtn');
+      if (recruitFormBtn && links.recruit && links.recruit.url) {
         recruitFormBtn.href = links.recruit.url;
       }
-      // Các nút Ứng Tuyển Gen Mới ở Navbar và Hero luôn cuộn mượt tới #tuyen-quan
-      const navCtaBtn = document.querySelector('[data-editable-id="nav_cta_btn"]');
-      if (navCtaBtn) {
-        navCtaBtn.setAttribute('href', 'javascript:void(0)');
-        navCtaBtn.setAttribute('onclick', 'scrollToTuyenQuan(event)');
-        const textSpan = navCtaBtn.querySelector('.hidden.sm\\:inline') || navCtaBtn.querySelector('span');
-        if (textSpan && links.recruit && links.recruit.text) textSpan.textContent = links.recruit.text;
+      const recruitSubLink = document.getElementById('heroRecruitmentSubLink');
+      if (recruitSubLink && links.recruit && links.recruit.url) {
+        recruitSubLink.href = links.recruit.url;
       }
-      const heroCtaBtn = document.querySelector('[data-editable-id="hero_cta_primary"]');
-      if (heroCtaBtn) {
-        heroCtaBtn.setAttribute('href', 'javascript:void(0)');
-        heroCtaBtn.setAttribute('onclick', 'scrollToTuyenQuan(event)');
+      const navRecruitBtn = document.getElementById('navRecruitBtn');
+      if (navRecruitBtn && links.recruit && links.recruit.url) {
+        navRecruitBtn.href = links.recruit.url;
       }
     }
 
     function openEditLinksModal() {
       lockBodyScroll();
       const links = getCustomLinks();
-      const inSchoolText = document.getElementById('admin_link_school_fb_text');
-      const inSchoolUrl = document.getElementById('admin_link_school_fb_url');
-      const inDoanText = document.getElementById('admin_link_doan_fb_text');
-      const inDoanUrl = document.getElementById('admin_link_doan_fb_url');
-      const inFbText = document.getElementById('admin_link_fb_text');
-      const inFbUrl = document.getElementById('admin_link_fb_url');
-      const inTtText = document.getElementById('admin_link_tt_text');
-      const inTtUrl = document.getElementById('admin_link_tt_url');
-      const inRecruitText = document.getElementById('admin_link_recruit_text');
-      const inRecruitUrl = document.getElementById('admin_link_recruit_url');
-
-      if (inSchoolText) inSchoolText.value = links.school_fb.text;
-      if (inSchoolUrl) inSchoolUrl.value = links.school_fb.url;
-      if (inDoanText) inDoanText.value = links.doan_fb.text;
-      if (inDoanUrl) inDoanUrl.value = links.doan_fb.url;
-      if (inFbText) inFbText.value = links.page_fb.text;
-      if (inFbUrl) inFbUrl.value = links.page_fb.url;
-      if (inTtText) inTtText.value = links.page_tt.text;
-      if (inTtUrl) inTtUrl.value = links.page_tt.url;
-      if (inRecruitText) inRecruitText.value = links.recruit.text;
-      if (inRecruitUrl) inRecruitUrl.value = links.recruit.url;
-
       const modal = document.getElementById('editLinksModal');
-      if (modal) {
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-      }
+      if (!modal) return;
+
+      const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val || '';
+      };
+
+      setVal('admin_link_school_fb_text', links.school_fb?.text);
+      setVal('admin_link_school_fb_url', links.school_fb?.url);
+      setVal('admin_link_doan_fb_text', links.doan_fb?.text);
+      setVal('admin_link_doan_fb_url', links.doan_fb?.url);
+      setVal('admin_link_fb_text', links.page_fb?.text);
+      setVal('admin_link_fb_url', links.page_fb?.url);
+      setVal('admin_link_tt_text', links.page_tt?.text);
+      setVal('admin_link_tt_url', links.page_tt?.url);
+      setVal('admin_link_recruit_text', links.recruit?.text);
+      setVal('admin_link_recruit_url', links.recruit?.url);
+
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
     }
 
     function closeEditLinksModal() {
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
-      document.body.style.position = '';
-      activeModalCount = 0;
-      if (typeof unlockBodyScroll === 'function') unlockBodyScroll(true);
+      unlockBodyScroll(true);
       const modal = document.getElementById('editLinksModal');
-      if (modal) {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-      }
+      if (!modal) return;
+      modal.classList.remove('flex');
+      modal.classList.add('hidden');
     }
 
-    function handleSaveCustomLinks(event) {
+    // Khi Admin bấm 'Lưu Liên Kết': Cập nhật giao diện và upsert trực tiếp vào bảng 'site_settings' trên Supabase
+    async function handleSaveCustomLinks(event) {
       if (event) event.preventDefault();
       const newLinks = {
         school_fb: {
@@ -7179,11 +7345,27 @@
         }
       };
 
+      window.cloudCustomLinks = newLinks;
       localStorage.setItem(STORAGE_KEY_CUSTOM_LINKS, JSON.stringify(newLinks));
       applyCustomLinksToDOM(newLinks);
       closeEditLinksModal();
+
+      // Upsert trực tiếp vào bảng 'site_settings'
+      const client = getSupabase();
+      if (client) {
+        try {
+          await client.from(SUPABASE_TABLE_SITE_SETTINGS).upsert({
+            key: 'custom_links',
+            value: newLinks
+          }, { onConflict: 'key' });
+          console.log('[Supabase site_settings] Đã đồng bộ custom_links lên đám mây!');
+        } catch (cloudErr) {
+          console.warn('[Supabase site_settings] Lỗi upsert custom_links:', cloudErr);
+        }
+      }
+
       if (typeof fireConfetti === 'function') fireConfetti('admin');
-      showToast('✅ Đã lưu Tên và Đường dẫn URL cho tất cả liên kết!');
+      showToast('✅ Đã lưu và đồng bộ liên kết lên máy chủ Supabase!');
     }
 
     // -------------------------------------------------------------
@@ -8433,13 +8615,82 @@
       }
     }
 
-    function renderPortfolio(isAnimated = false) {
+window.cloudPortfolioPosts = null;
+
+    // Tải danh sách ấn phẩm từ bảng 'san_pham' trên Supabase
+    async function fetchProductsFromSupabase() {
+      const client = getSupabase();
+      if (!client) {
+        renderPortfolio();
+        return;
+      }
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_SAN_PHAM)
+          .select('*')
+          .order('id', { ascending: false });
+
+        if (error) {
+          console.warn('[Supabase san_pham] Lỗi tải danh sách sản phẩm:', error);
+          renderPortfolio();
+          return;
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          const cloudPosts = data.map((row, idx) => ({
+            id: row.id || ('sp_' + idx),
+            title: row.title || row.name || 'Ấn phẩm media Sóng of HT',
+            category: row.category || row.type || 'video',
+            year: row.year || '2025-2026',
+            image: row.image || row.image_url || row.thumb || 'assets/logo-song-of-ht.jpg',
+            metrics: row.metrics || row.views || 'Mới ra mắt',
+            summary: row.summary || row.description || row.desc || '',
+            url: row.url || row.link || '#',
+            hidden: !!row.hidden,
+            isCloud: true
+          }));
+
+          window.cloudPortfolioPosts = cloudPosts;
+          renderPortfolio(false, cloudPosts);
+          console.log(`[Supabase san_pham] Đã tải ${cloudPosts.length} ấn phẩm truyền thông từ đám mây!`);
+        } else {
+          renderPortfolio();
+        }
+      } catch (err) {
+        console.warn('[Supabase san_pham] Ngoại lệ khi tải sản phẩm:', err);
+        renderPortfolio();
+      }
+    }
+
+    function initProductsRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:san_pham')
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_SAN_PHAM }, () => {
+            console.log('[Supabase san_pham] Có ấn phẩm mới từ đám mây, cập nhật giao diện...');
+            fetchProductsFromSupabase();
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('[Supabase san_pham] Lỗi kết nối realtime san_pham:', err);
+      }
+    }
+    window.fetchProductsFromSupabase = fetchProductsFromSupabase;
+
+    function renderPortfolio(isAnimated = false, customPosts) {
       const grid = document.getElementById('portfolioGrid');
       const loadMoreWrap = document.getElementById('portfolioLoadMoreWrap');
       const loadMoreText = document.getElementById('portfolioLoadMoreText');
       if (!grid) return;
 
-      const posts = getStoredPortfolio();
+      const posts = (customPosts && Array.isArray(customPosts)) 
+        ? customPosts 
+        : (window.cloudPortfolioPosts && window.cloudPortfolioPosts.length > 0 
+            ? window.cloudPortfolioPosts 
+            : getStoredPortfolio());
 
       // Áp dụng bộ lọc đồng thời: Thể loại + Năm học (khách không thấy bài ẩn)
       const filtered = posts.filter(p => {
@@ -8721,13 +8972,12 @@
       const form = document.getElementById('addPortfolioForm');
 
       try {
-        // Khóa nút tạm thời để tránh double submit trong lúc xử lý file/ảnh
         if (submitBtn) {
           submitBtn.disabled = true;
           submitBtn.innerHTML = '<span class="inline-block animate-spin mr-1">⏳</span> <span>Đang đăng...</span>';
         }
 
-        // Đọc dữ liệu đầu vào
+        // 1. Thu thập dữ liệu từ các input trên form
         const titleEl = document.getElementById('addPostTitle');
         let title = titleEl ? titleEl.value.trim() : '';
 
@@ -8755,7 +9005,6 @@
         const imageUrlInput = document.getElementById('addPostImageUrl');
         const imgUrlVal = imageUrlInput ? imageUrlInput.value.trim() : '';
 
-        // Tối ưu xử lý ảnh bìa
         let image = 'assets/logo-song-of-ht.jpg';
         if (fileInput && fileInput.files && fileInput.files[0]) {
           try {
@@ -8768,9 +9017,7 @@
           image = imgUrlVal;
         }
 
-        // Nới lỏng Validation: Tự động điền giá trị hợp lý nếu người dùng bỏ trống
         if (!title) {
-          const currentPosts = getStoredPortfolio();
           const categoryNameMap = {
             video: 'Video Clip',
             photo: 'Album Ảnh',
@@ -8778,10 +9025,54 @@
             design: 'Thiết Kế Poster'
           };
           const catName = categoryNameMap[category] || 'Truyền Thông';
-          title = `Ấn phẩm ${catName} mới #${currentPosts.length + 1}`;
+          title = `Ấn phẩm ${catName} mới`;
         }
 
-        // Khởi tạo bài viết mới
+        // 2. Thực hiện câu lệnh insert dữ liệu trực tiếp vào bảng 'san_pham' trên Supabase
+        const client = getSupabase();
+        if (client) {
+          try {
+            let { error } = await client
+              .from(SUPABASE_TABLE_SAN_PHAM)
+              .insert([{
+                title,
+                category,
+                year,
+                image,
+                metrics,
+                summary,
+                url,
+                hidden
+              }]);
+
+            if (error && error.message && error.message.includes('summary')) {
+              // Dự phòng nếu tên cột trong DB là description
+              const retry = await client
+                .from(SUPABASE_TABLE_SAN_PHAM)
+                .insert([{
+                  title,
+                  category,
+                  year,
+                  image,
+                  metrics,
+                  description: summary,
+                  url,
+                  hidden
+                }]);
+              error = retry.error;
+            }
+
+            if (!error) {
+              console.log('[Supabase san_pham] Đã đăng ấn phẩm media thành công lên bảng san_pham!');
+            } else {
+              console.warn('[Supabase san_pham] Cảnh báo insert:', error);
+            }
+          } catch (cloudErr) {
+            console.warn('[Supabase san_pham] Ngoại lệ khi insert:', cloudErr);
+          }
+        }
+
+        // Cập nhật cả vào mảng cục bộ để phản hồi tức thì
         const newPost = {
           id: 'post-' + Date.now(),
           title,
@@ -8793,28 +9084,33 @@
           url,
           hidden
         };
-
-        // Lưu vào LocalStorage và cập nhật giao diện
         const posts = getStoredPortfolio();
         posts.unshift(newPost);
         saveStoredPortfolio(posts);
 
-        // Reset form & đóng modal mượt mà
+        if (window.cloudPortfolioPosts && Array.isArray(window.cloudPortfolioPosts)) {
+          window.cloudPortfolioPosts.unshift(newPost);
+        }
+
+        // 3. Tự động đóng modal form và reset dữ liệu
         if (form && typeof form.reset === 'function') {
           form.reset();
         }
         closeAddPortfolioModal();
 
-        showToast('🎉 Đã thêm ấn phẩm media mới thành công!');
+        // Tự động tải lại danh sách sản phẩm để giao diện cập nhật ngay lập tức mà không cần F5
+        await fetchProductsFromSupabase();
+
+        // Hiển thị thông báo thành công
+        showToast('🎉 Đã đăng ấn phẩm media mới thành công lên hệ thống!');
       } catch (err) {
         console.error('Lỗi khi đăng bài viết mới:', err);
-        if (isQuotaExceededError(err)) {
+        if (typeof isQuotaExceededError === 'function' && isQuotaExceededError(err)) {
           showToast('⚠️ Bộ nhớ trình duyệt đã đầy, không thể lưu thêm ảnh nặng. Vui lòng dùng link ảnh online thay vì tải tệp trực tiếp!');
         } else {
           showToast('⚠️ Không thể đăng bài: ' + (err.message || 'Lỗi dữ liệu'));
         }
       } finally {
-        // Phục hồi nút bấm đảm bảo tuyệt đối không bị kẹt trạng thái (dead state)
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.innerHTML = '<span>➕</span> <span>Đăng Bài</span>';
@@ -9405,7 +9701,99 @@
       input.value = '';
     }
 
+    window.cloudMembers = null;
+
+    // Tải danh sách thành viên trực tiếp từ bảng 'thanh_vien' trên Supabase
+    async function fetchMembersFromSupabase() {
+      const client = getSupabase();
+      if (!client) {
+        renderMembers();
+        if (typeof renderBirthdayBoard === 'function') renderBirthdayBoard();
+        return;
+      }
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_THANH_VIEN)
+          .select('*')
+          .order('id', { ascending: true });
+
+        if (error) {
+          console.warn('[Supabase thanh_vien] Lỗi tải thành viên:', error);
+          renderMembers();
+          if (typeof renderBirthdayBoard === 'function') renderBirthdayBoard();
+          return;
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          const cloudMembers = data.map((m, idx) => {
+            let roles = [];
+            if (Array.isArray(m.roles)) {
+              roles = m.roles.filter(r => typeof r === 'string' && r.trim().length > 0);
+            } else if (typeof m.roles === 'string' && m.roles.trim().length > 0) {
+              roles = m.roles.split(',').map(s => s.trim()).filter(Boolean);
+            } else if (m.badge && typeof m.badge === 'string' && m.badge.trim().length > 0) {
+              roles = [m.badge.trim()];
+            }
+            if (roles.length === 0) {
+              roles = [m.dept || m.department || 'Thành Viên'];
+            }
+
+            return {
+              id: m.id || ('mem_' + (idx + 1)),
+              name: m.name || '',
+              nickname: m.nickname || '',
+              dept: m.dept || m.department || 'Ban Chuyên Môn',
+              gen: m.gen || 'Gen 1',
+              year: m.year || '2025-2026',
+              birthday: m.birthday || '',
+              roles: roles,
+              badge: roles[0] || m.dept || 'Thành Viên',
+              quote: m.quote || 'Sóng Of HT — Bắt trọn thanh xuân!',
+              image: m.image || m.avatar || m.image_url || 'assets/logo-song-of-ht.jpg'
+            };
+          });
+
+          window.cloudMembers = cloudMembers;
+          try {
+            localStorage.setItem(STORAGE_KEY_MEMBERS, JSON.stringify(cloudMembers));
+          } catch (e) {}
+
+          renderMembers(cloudMembers);
+          if (typeof renderBirthdayBoard === 'function') renderBirthdayBoard();
+          console.log(`[Supabase thanh_vien] Đã tải ${cloudMembers.length} thành viên & đồng bộ Bảng Vàng Sinh Nhật từ đám mây!`);
+        } else {
+          renderMembers();
+          if (typeof renderBirthdayBoard === 'function') renderBirthdayBoard();
+        }
+      } catch (err) {
+        console.warn('[Supabase thanh_vien] Ngoại lệ khi tải thành viên:', err);
+        renderMembers();
+        if (typeof renderBirthdayBoard === 'function') renderBirthdayBoard();
+      }
+    }
+
+    function initMembersRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:thanh_vien')
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_THANH_VIEN }, () => {
+            console.log('[Supabase thanh_vien] Có thay đổi danh sách thành viên trên đám mây...');
+            fetchMembersFromSupabase();
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('[Supabase thanh_vien] Lỗi realtime thanh_vien:', err);
+      }
+    }
+    window.fetchMembersFromSupabase = fetchMembersFromSupabase;
+
     function getStoredMembers() {
+      if (window.cloudMembers && Array.isArray(window.cloudMembers) && window.cloudMembers.length > 0) {
+        return window.cloudMembers;
+      }
       const raw = localStorage.getItem(STORAGE_KEY_MEMBERS);
       let list = [...DEFAULT_MEMBERS];
       if (raw) {
@@ -9490,10 +9878,10 @@
       }
     }
 
-    function renderMembers() {
+    function renderMembers(customMembers) {
       const track = document.getElementById('membersTrack');
       if (!track) return;
-      const members = getStoredMembers();
+      const members = (customMembers && Array.isArray(customMembers)) ? customMembers : getStoredMembers();
 
       track.innerHTML = members.map(item => {
         const photo = (customImagesData['mem_img_' + item.id]) || (item.image && item.image.trim() !== '' ? item.image : 'assets/logo-song-of-ht.jpg');
@@ -10569,7 +10957,48 @@
     // -------------------------------------------------------------
     // MOBILE MENU TOGGLE
     // -------------------------------------------------------------
+    // Đồng bộ mượt mà các liên kết neo (anchor links) trong Menu chính & Khám Phá trên PC và Di Động
+    function initSmoothNavAnchors() {
+      const anchors = document.querySelectorAll('a[href^="#"]');
+      anchors.forEach(a => {
+        const hash = a.getAttribute('href');
+        if (!hash || hash === '#' || hash.startsWith('#tab') || hash.startsWith('#modal')) return;
+
+        a.addEventListener('click', function(e) {
+          const target = document.querySelector(hash);
+          if (target) {
+            e.preventDefault();
+            const header = document.querySelector('header');
+            const offset = header ? (header.offsetHeight + 10) : 80;
+            const targetPos = target.getBoundingClientRect().top + window.pageYOffset - offset;
+
+            window.scrollTo({
+              top: targetPos,
+              behavior: 'smooth'
+            });
+
+            // Tự động đóng Mobile Menu nếu đang mở
+            const mobileMenu = document.getElementById('mobileMenu');
+            if (mobileMenu && !mobileMenu.classList.contains('hidden')) {
+              mobileMenu.classList.add('hidden');
+            }
+
+            // Tự động đóng Dropdown Khám Phá nếu đang mở
+            const dropdown = document.getElementById('navDropdownMenu');
+            if (dropdown && !dropdown.classList.contains('hidden')) {
+              dropdown.classList.add('hidden');
+            }
+
+            if (history.pushState) {
+              history.pushState(null, null, hash);
+            }
+          }
+        });
+      });
+    }
+
     function initMobileMenu() {
+      initSmoothNavAnchors();
       const toggle = document.getElementById('menuToggle');
       const menu = document.getElementById('mobileMenu');
       if (!toggle || !menu) return;
@@ -11167,47 +11596,60 @@
     let heartSupabaseRowId = null;
     let heartSyncTimer = null;
     let pendingHeartIncrements = 0;
+    let isFetchingHearts = false;
 
+    // Tải số lượt tim mới nhất trực tiếp từ bảng 'tim' trên Supabase
     async function fetchHeartsFromSupabase() {
+      if (isFetchingHearts) return;
       const client = getSupabase();
       if (!client) return;
+
       try {
+        isFetchingHearts = true;
         const { data, error } = await client
           .from(SUPABASE_TABLE_TIM)
-          .select('*')
+          .select('id, count')
           .limit(1);
 
         if (error) {
-          console.warn('[Supabase tim] Lỗi khi tải lượt tim:', error);
+          console.warn('[Supabase tim] Lỗi tải số lượt tim:', error);
           return;
         }
 
-        if (data && data.length > 0) {
+        if (Array.isArray(data) && data.length > 0) {
           const row = data[0];
           heartSupabaseRowId = row.id;
-          const cloudCount = parseInt(row.count, 10);
-          if (!isNaN(cloudCount)) {
-            const localCount = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 0;
-            const finalCount = Math.max(cloudCount, localCount);
-            localStorage.setItem(STORAGE_KEY_HEARTS, finalCount);
-            const display = document.getElementById('heartCountDisplay');
-            if (display) display.textContent = finalCount.toLocaleString('vi-VN');
+          const cloudCount = Number(row.count) || 0;
+
+          // Cập nhật trực tiếp số liệu từ cloud để xóa bỏ hoàn toàn độ lệch giữa PC và điện thoại
+          localStorage.setItem(STORAGE_KEY_HEARTS, cloudCount);
+
+          const display = document.getElementById('heartCountDisplay');
+          if (display) {
+            display.textContent = cloudCount.toLocaleString('vi-VN');
           }
         } else {
-          const currentLocal = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 1910;
-          const { data: inserted } = await client
+          // Khởi tạo hàng đầu tiên nếu bảng rỗng
+          const initialCount = 1910;
+          const { data: newRow } = await client
             .from(SUPABASE_TABLE_TIM)
-            .insert([{ count: currentLocal }])
+            .insert([{ count: initialCount }])
             .select();
-          if (inserted && inserted[0]) {
-            heartSupabaseRowId = inserted[0].id;
+          if (newRow && newRow.length > 0) {
+            heartSupabaseRowId = newRow[0].id;
           }
         }
       } catch (err) {
-        console.warn('[Supabase tim] Ngoại lệ khi tải tim:', err);
+        console.warn('[Supabase tim] Ngoại lệ khi fetch tim:', err);
+      } finally {
+        isFetchingHearts = false;
       }
     }
 
+    // Tự động polling số tim mỗi 5 giây
+    setInterval(fetchHeartsFromSupabase, 5000);
+
+    // Lắng nghe cập nhật Realtime bảng 'tim'
     function initHeartsRealtime() {
       const client = getSupabase();
       if (!client || typeof client.channel !== 'function') return;
@@ -11215,14 +11657,15 @@
         client
           .channel('realtime:tim')
           .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_TIM }, (payload) => {
-            if (payload.new && !isNaN(payload.new.count)) {
-              const newCount = parseInt(payload.new.count, 10);
-              const currentLocal = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 0;
-              if (newCount > currentLocal) {
-                localStorage.setItem(STORAGE_KEY_HEARTS, newCount);
-                const display = document.getElementById('heartCountDisplay');
-                if (display) display.textContent = newCount.toLocaleString('vi-VN');
+            if (payload && payload.new && typeof payload.new.count !== 'undefined') {
+              const cloudCount = Number(payload.new.count) || 0;
+              localStorage.setItem(STORAGE_KEY_HEARTS, cloudCount);
+              const display = document.getElementById('heartCountDisplay');
+              if (display) {
+                display.textContent = cloudCount.toLocaleString('vi-VN');
               }
+            } else {
+              fetchHeartsFromSupabase();
             }
           })
           .subscribe();
@@ -11231,56 +11674,61 @@
       }
     }
 
+    // Cơ chế gom nhóm (batching) khi bấm nút thả tim liên tục
     function scheduleHeartSyncToSupabase() {
       if (heartSyncTimer) clearTimeout(heartSyncTimer);
-      heartSyncTimer = setTimeout(flushHeartsToSupabase, 1200);
+
+      heartSyncTimer = setTimeout(async () => {
+        if (pendingHeartIncrements <= 0) return;
+        const incrementsToSend = pendingHeartIncrements;
+        pendingHeartIncrements = 0;
+
+        const client = getSupabase();
+        if (!client) return;
+
+        try {
+          if (heartSupabaseRowId) {
+            const { data } = await client
+              .from(SUPABASE_TABLE_TIM)
+              .select('count')
+              .eq('id', heartSupabaseRowId)
+              .limit(1);
+
+            const baseCount = (data && data.length > 0) ? (Number(data[0].count) || 0) : 0;
+            const updatedTotal = baseCount + incrementsToSend;
+
+            await client
+              .from(SUPABASE_TABLE_TIM)
+              .update({ count: updatedTotal })
+              .eq('id', heartSupabaseRowId);
+
+            localStorage.setItem(STORAGE_KEY_HEARTS, updatedTotal);
+          } else {
+            const { data } = await client
+              .from(SUPABASE_TABLE_TIM)
+              .select('id, count')
+              .limit(1);
+
+            if (data && data.length > 0) {
+              heartSupabaseRowId = data[0].id;
+              const updatedTotal = (Number(data[0].count) || 0) + incrementsToSend;
+              await client
+                .from(SUPABASE_TABLE_TIM)
+                .update({ count: updatedTotal })
+                .eq('id', heartSupabaseRowId);
+              localStorage.setItem(STORAGE_KEY_HEARTS, updatedTotal);
+            } else {
+              await client.from(SUPABASE_TABLE_TIM).insert([{ count: 1910 + incrementsToSend }]);
+            }
+          }
+        } catch (e) {
+          console.warn('[Supabase tim] Lỗi khi đồng bộ batch tim:', e);
+        }
+      }, 1000);
     }
 
-    async function flushHeartsToSupabase() {
-      if (pendingHeartIncrements <= 0) return;
-      const increments = pendingHeartIncrements;
-      pendingHeartIncrements = 0;
-
-      const client = getSupabase();
-      if (!client) return;
-
-      try {
-        let currentCount;
-        if (heartSupabaseRowId) {
-          const { data } = await client
-            .from(SUPABASE_TABLE_TIM)
-            .select('count')
-            .eq('id', heartSupabaseRowId)
-            .single();
-          if (data && !isNaN(data.count)) {
-            currentCount = parseInt(data.count, 10) + increments;
-          }
-        }
-
-        if (isNaN(currentCount)) {
-          const localVal = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 1910;
-          currentCount = localVal;
-        }
-
-        if (heartSupabaseRowId) {
-          await client
-            .from(SUPABASE_TABLE_TIM)
-            .update({ count: currentCount })
-            .eq('id', heartSupabaseRowId);
-        } else {
-          const { data: inserted } = await client
-            .from(SUPABASE_TABLE_TIM)
-            .insert([{ count: currentCount }])
-            .select();
-          if (inserted && inserted[0]) {
-            heartSupabaseRowId = inserted[0].id;
-          }
-        }
-        console.log(`[Supabase tim] Đã đồng bộ batch +${increments} tim thành công! Tổng: ${currentCount}`);
-      } catch (err) {
-        console.warn('[Supabase tim] Ngoại lệ khi flush tim:', err);
-      }
-    }
+    window.fetchHeartsFromSupabase = fetchHeartsFromSupabase;
+    window.initHeartsRealtime = initHeartsRealtime;
 
     function initHeartsCount() {
       const display = document.getElementById('heartCountDisplay');
@@ -11298,86 +11746,65 @@
     window.initHeartsCount = initHeartsCount;
 
     let heartClickTracker = [];
-
     let userHeartClickCount = 0;
 
     function handleSendHeart(e) {
       const now = Date.now();
-      heartClickTracker.push(now);
-      heartClickTracker = heartClickTracker.filter(t => now - t <= 4000);
-      userHeartClickCount += 1;
-
-      // Kích hoạt bão sao băng & vỏ sò rơi:
-      // - Mỗi mốc 5 lần thả tim (Click milestone)
-      // - Hoặc khi spam dồn dập (>= 4 clicks trong 4 giây)
-      if (userHeartClickCount % 5 === 0 || heartClickTracker.length >= 4) {
-        heartClickTracker = [];
-        triggerMeteorRain();
+      heartClickTracker = heartClickTracker.filter(t => now - t < 1000);
+      if (heartClickTracker.length >= 15) {
+        showToast('⚡ Bạn đang thả tim quá nhanh! Nghỉ tay một nhịp nhé.');
+        return;
       }
+      heartClickTracker.push(now);
 
       const display = document.getElementById('heartCountDisplay');
-      let current = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10);
-      if (isNaN(current) || current <= 0) {
-        current = 1910;
-      }
-      current += 1;
-      // Ghi nhận trực tiếp và vĩnh viễn vào kho dữ liệu (Database / LocalStorage)
-      localStorage.setItem(STORAGE_KEY_HEARTS, current);
-
-      // Đồng bộ ngay lập tức vào STORAGE_KEY_INLINE để loại bỏ mọi nguy cơ bị CMS inline snapshot ghi đè
-      try {
-        const inlineData = JSON.parse(localStorage.getItem(STORAGE_KEY_INLINE)) || {};
-        inlineData['heart_counter_display'] = current.toLocaleString('vi-VN');
-        localStorage.setItem(STORAGE_KEY_INLINE, JSON.stringify(inlineData));
-      } catch (err) {}
-
-      // Track user personal heart clicks for leaderboard
-      let uHearts = parseInt(localStorage.getItem('song_of_ht_user_hearts'), 10) || 0;
-      localStorage.setItem('song_of_ht_user_hearts', uHearts + 1);
-      if (typeof updateLeaderboardLiveScore === 'function') updateLeaderboardLiveScore();
-      if (typeof syncLiveScoreToLeaderboard === 'function') syncLiveScoreToLeaderboard();
+      let currentVal = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 1910;
+      currentVal += 1;
+      localStorage.setItem(STORAGE_KEY_HEARTS, currentVal);
 
       if (display) {
-        display.textContent = current.toLocaleString('vi-VN');
+        display.textContent = currentVal.toLocaleString('vi-VN');
+        display.classList.remove('heart-bump');
+        void display.offsetWidth;
+        display.classList.add('heart-bump');
       }
 
-      // Tự động đồng bộ số tim lên bảng 'tim' trên Supabase (có debounce tránh quá tải)
+      // Tích lũy batching lên Supabase
       pendingHeartIncrements += 1;
       scheduleHeartSyncToSupabase();
 
-      // Tạo các hạt tim bay bổng
-      const btn = e.currentTarget || document.getElementById('sendHeartBtn');
-      const rect = btn.getBoundingClientRect();
-      const emojis = ['💖', '✨', '🌊', '💕', '🔥', '🌸', '🐚', '⭐'];
-
-      for (let i = 0; i < 6; i++) {
-        const particle = document.createElement('span');
-        particle.className = 'floating-heart-particle text-xl sm:text-2xl';
-        particle.textContent = emojis[Math.floor(Math.random() * emojis.length)];
-
-        const offsetX = (Math.random() - 0.5) * rect.width;
-        const startX = rect.left + rect.width / 2 + offsetX;
-        const startY = rect.top + window.scrollY;
-
-        particle.style.left = `${startX}px`;
-        particle.style.top = `${startY}px`;
-
-        document.body.appendChild(particle);
-
-        setTimeout(() => {
-          particle.remove();
-        }, 1300);
+      // Điểm cống hiến (+5 điểm mỗi lượt thả tim)
+      if (typeof addContributionPoints === 'function') {
+        addContributionPoints(5);
       }
 
-      // Thả nhẹ 1-2 vỏ sò hoặc sao băng rơi ngay trên màn hình để tạo cảm giác biển cả sống động
-      for (let s = 0; s < 2; s++) {
+      const rect = e ? (e.currentTarget ? e.currentTarget.getBoundingClientRect() : null) : null;
+      createFloatingHeart(rect ? rect.left + rect.width / 2 : window.innerWidth / 2, rect ? rect.top : window.innerHeight / 2);
+
+      userHeartClickCount += 1;
+      if (userHeartClickCount % 10 === 0) {
+        showToast(`🎉 Cảm ơn bạn! Bạn đã gửi ${userHeartClickCount} nhịp tim tiếp lửa thanh xuân.`);
+      }
+
+      const clickSfx = document.getElementById('heartClickSfx');
+      if (clickSfx) {
+        clickSfx.currentTime = 0;
+        clickSfx.play().catch(() => {});
+      }
+
+      const btn = document.getElementById('btnSendHeart');
+      if (btn) {
         const shell = document.createElement('span');
-        shell.className = 'meteor-particle text-xl sm:text-2xl';
-        shell.textContent = s === 0 ? '🐚' : '⭐';
-        shell.style.left = `${Math.random() * (window.innerWidth - 60) + 30}px`;
-        shell.style.top = '-40px';
-        shell.style.animationDuration = '1.6s';
-        document.body.appendChild(shell);
+        shell.className = 'absolute inset-0 rounded-full bg-rose-400/30 animate-ping pointer-events-none';
+        btn.appendChild(shell);
+        setTimeout(() => shell.remove(), 600);
+      }
+
+      const heroMascot = document.getElementById('mascotFloatingHero');
+      if (heroMascot) {
+        const shell = document.createElement('div');
+        shell.className = 'absolute -inset-4 rounded-full bg-pink-500/30 blur-xl animate-pulse pointer-events-none';
+        heroMascot.parentElement.appendChild(shell);
         setTimeout(() => shell.remove(), 1800);
       }
 
@@ -11421,12 +11848,43 @@
 
         window.handleSendHeart = handleSendHeart;
 
-function initGraffitiWall() {
+// Hàm chuẩn hóa định dạng thời gian Việt Nam (GMT+7)
+    function formatVietnamDateTime(timestamp) {
+      if (!timestamp) {
+        return formatVietnamDateObject(new Date());
+      }
+      try {
+        const d = new Date(timestamp);
+        if (isNaN(d.getTime())) return formatVietnamDateObject(new Date());
+        return formatVietnamDateObject(d);
+      } catch (e) {
+        return formatVietnamDateObject(new Date());
+      }
+    }
+
+    function formatVietnamDateObject(d) {
+      // Hiển thị chuẩn giờ Việt Nam (GMT+7): Giờ:Phút • Ngày/Tháng/Năm
+      const timeStr = d.toLocaleTimeString('vi-VN', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      });
+      const dateStr = d.toLocaleDateString('vi-VN', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+      return `${timeStr} • ${dateStr}`;
+    }
+
+    function initGraffitiWall() {
       graffitiCanvas = document.getElementById('graffitiCanvas');
       if (!graffitiCanvas) return;
       graffitiCtx = graffitiCanvas.getContext('2d');
 
-      // Khởi tạo nền trong suốt
+      // Khởi tạo nét vẽ
       graffitiCtx.lineCap = 'round';
       graffitiCtx.lineJoin = 'round';
       graffitiCtx.strokeStyle = currentGraffitiColor;
@@ -11441,7 +11899,6 @@ function initGraffitiWall() {
       graffitiCanvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
         const touch = e.touches[0];
-        const rect = graffitiCanvas.getBoundingClientRect();
         const mouseEvent = new MouseEvent('mousedown', {
           clientX: touch.clientX,
           clientY: touch.clientY
@@ -11459,7 +11916,7 @@ function initGraffitiWall() {
         graffitiCanvas.dispatchEvent(mouseEvent);
       }, { passive: false });
 
-      graffitiCanvas.addEventListener('touchend', (e) => {
+      graffitiCanvas.addEventListener('touchend', () => {
         const mouseEvent = new MouseEvent('mouseup', {});
         window.dispatchEvent(mouseEvent);
       });
@@ -11469,6 +11926,7 @@ function initGraffitiWall() {
       initGraffitiRealtime();
     }
 
+    // Tải toàn bộ chữ ký từ bảng 'ky' trên Supabase với định dạng ngày giờ GMT+7 chuẩn xác
     async function fetchGraffitiFromSupabase() {
       const client = getSupabase();
       if (!client) return;
@@ -11478,7 +11936,7 @@ function initGraffitiWall() {
           .from(SUPABASE_TABLE_KY)
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(30);
+          .limit(60);
 
         if (error) {
           console.warn('[Supabase ky] Lỗi khi tải dữ liệu bảng ky:', error);
@@ -11487,13 +11945,7 @@ function initGraffitiWall() {
 
         if (Array.isArray(data) && data.length > 0) {
           const cloudNotes = data.map((row, idx) => {
-            let dateStr = '05/11/2026';
-            if (row.created_at) {
-              try {
-                const d = new Date(row.created_at);
-                dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-              } catch (e) {}
-            }
+            const dateStr = formatVietnamDateTime(row.created_at);
             return {
               id: row.id || ('cloud_' + idx),
               author: row.name || 'Một học sinh Hà Trung ẩn danh',
@@ -11605,7 +12057,8 @@ function initGraffitiWall() {
       }
     }
 
-    function pinGraffitiToWall() {
+    // Ghim chữ ký: Đẩy dữ liệu vào bảng 'ky' trên Supabase với timestamp GMT+7
+    async function pinGraffitiToWall() {
       const authorInput = document.getElementById('graffitiAuthor');
       const noteInput = document.getElementById('graffitiNote');
 
@@ -11622,14 +12075,17 @@ function initGraffitiWall() {
         drawingData = graffitiCanvas.toDataURL('image/png');
       }
 
-      const today = new Date();
-      const dateStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+      const nowIso = new Date().toISOString();
+      const dateDisplay = formatVietnamDateTime(nowIso);
+
+      const finalAuthor = author || 'Một học sinh Hà Trung ẩn danh';
+      const finalNote = note || 'Chúc Sóng Of HT và trường mình luôn luôn rực rỡ!';
 
       const newEntry = {
         id: 'note_' + Date.now(),
-        author: author || 'Một học sinh Hà Trung ẩn danh',
-        note: note || 'Chúc Sóng Of HT và trường mình luôn luôn rực rỡ!',
-        date: dateStr,
+        author: finalAuthor,
+        note: finalNote,
+        date: dateDisplay,
         drawing: drawingData
       };
 
@@ -11637,70 +12093,60 @@ function initGraffitiWall() {
       notes.unshift(newEntry);
       localStorage.setItem(STORAGE_KEY_GRAFFITI, JSON.stringify(notes));
 
-      // Reset form
-
+      // Reset form & canvas
       if (authorInput) authorInput.value = '';
-
       if (noteInput) noteInput.value = '';
-
       clearGraffitiCanvas();
 
-
-
-      // Cập nhật điểm cống hiến (+50 điểm) và tăng số lượng kỷ niệm (+1)
-
-      let uNotes = parseInt(localStorage.getItem('song_of_ht_user_notes'), 10) || 0;
-
-      uNotes += 1;
-
-      localStorage.setItem('song_of_ht_user_notes', uNotes);
-
-
-
-      // Nếu người dùng có nhập tên tác giả và chưa từng lưu nickname BXH, tự động gán tên
-
       if (author && !localStorage.getItem('song_of_ht_user_nickname')) {
-
         localStorage.setItem('song_of_ht_user_nickname', author);
-
       }
 
-
-
-      // Cập nhật real-time giao diện điểm cống hiến & Bảng Vàng Fan Cứng (+50 điểm)
-
-      if (typeof updateLeaderboardLiveScore === 'function') updateLeaderboardLiveScore();
-
-      if (typeof syncLiveScoreToLeaderboard === 'function') syncLiveScoreToLeaderboard();
-
-      if (typeof renderLeaderboard === 'function') renderLeaderboard();
-
-
-
       renderGraffitiWall();
-
       fireConfetti('graffiti');
-
       showToast('🎉 +50 Điểm Cống Hiến! Chữ ký & lời chúc của bạn đã được ghim lên Tường Kỷ Niệm!');
 
-      // Lưu chữ ký vào bảng 'ky' trên Supabase (name, message, signature_data)
+      // Tăng điểm cống hiến trên Supabase bảng bxh (+50 điểm)
+      if (typeof addContributionPoints === 'function') {
+        addContributionPoints(50);
+      }
+
+      // Lưu chữ ký vào bảng 'ky' trên Supabase (name, message, signature_data, created_at)
       const client = getSupabase();
       if (client) {
-        client.from(SUPABASE_TABLE_KY).insert([{
-          name: newEntry.author,
-          message: newEntry.note,
-          signature_data: newEntry.drawing
-        }]).then(({ error }) => {
-          if (error) console.warn('[Supabase ky] Lỗi khi insert vào bảng ky:', error);
-          else console.log('[Supabase ky] Đã lưu chữ ký thành công vào bảng ky!');
-        }).catch(err => console.warn('[Supabase ky] Ngoại lệ insert:', err));
+        try {
+          const { error } = await client.from(SUPABASE_TABLE_KY).insert([{
+            name: finalAuthor,
+            message: finalNote,
+            signature_data: drawingData,
+            created_at: nowIso
+          }]);
+          if (!error) {
+            console.log('[Supabase ky] Đã lưu chữ ký thành công vào bảng ky!');
+            fetchGraffitiFromSupabase();
+          } else {
+            console.warn('[Supabase ky] Lỗi khi insert vào bảng ky:', error);
+          }
+        } catch (err) {
+          console.warn('[Supabase ky] Ngoại lệ insert:', err);
+        }
       }
     }
 
-    function deleteGraffitiNote(id) {
+    async function deleteGraffitiNote(id) {
       if (!confirm('Bạn có chắc muốn gỡ lời chúc này khỏi tường kỷ niệm?')) return;
+
+      const client = getSupabase();
+      if (client) {
+        try {
+          await client.from(SUPABASE_TABLE_KY).delete().eq('id', id);
+        } catch (e) {
+          console.warn('[Supabase ky] Không thể xóa chữ ký trên đám mây:', e);
+        }
+      }
+
       let notes = getSavedGraffiti();
-      notes = notes.filter(n => n.id !== id);
+      notes = notes.filter(n => String(n.id) !== String(id));
       localStorage.setItem(STORAGE_KEY_GRAFFITI, JSON.stringify(notes));
       renderGraffitiWall();
       showToast('Đã gỡ lời chúc thành công!');
@@ -11761,6 +12207,11 @@ function initGraffitiWall() {
       });
     }
 
+    window.fetchGraffitiFromSupabase = fetchGraffitiFromSupabase;
+    window.pinGraffitiToWall = pinGraffitiToWall;
+    window.renderGraffitiWall = renderGraffitiWall;
+    window.deleteGraffitiNote = deleteGraffitiNote;
+
     function showToast(message) {
       const toast = document.getElementById('toastNotification');
       const msg = document.getElementById('toastMessage');
@@ -11774,6 +12225,393 @@ function initGraffitiWall() {
       }, 4000);
     }
     window.showToast = showToast;
+
+    // =============================================================
+    // ĐỒNG BỘ PHẦN GIỚI THIỆU 'VỀ CHÚNG MÌNH' (BẢNG 've_chung_minh')
+    // =============================================================
+    async function fetchVeChungMinhFromSupabase() {
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_VE_CHUNG_MINH)
+          .select('*');
+
+        if (error) {
+          console.warn('[Supabase ve_chung_minh] Lỗi tải dữ liệu:', error);
+          return;
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          const titleEl = document.querySelector('[data-editable-id="about_title"]');
+          const introEl = document.querySelector('[data-editable-id="about_intro_desc"]');
+          const quoteEl = document.querySelector('[data-editable-id="about_quote"]');
+          const contentEl = document.querySelector('[data-editable-id="about_content"]');
+
+          let titleVal = null;
+          let introVal = null;
+          let quoteVal = null;
+          let waves = [];
+
+          // 1. Kiểm tra nếu bảng tổ chức dạng key-value
+          const isKeyValue = data.some(row => row.key && (row.value !== undefined || row.val !== undefined));
+          if (isKeyValue) {
+            data.forEach(row => {
+              const k = String(row.key).toLowerCase().trim();
+              const v = row.value ?? row.val ?? '';
+              if (k === 'title' || k === 'about_title') titleVal = v;
+              else if (k === 'intro' || k === 'desc' || k === 'description' || k === 'about_intro_desc') introVal = v;
+              else if (k === 'quote' || k === 'about_quote') quoteVal = v;
+              else if (k === 'waves' || k === 'content') {
+                if (Array.isArray(v)) waves = v;
+                else if (typeof v === 'string') {
+                  try {
+                    const parsed = JSON.parse(v);
+                    if (Array.isArray(parsed)) waves = parsed;
+                    else if (contentEl) contentEl.innerHTML = v;
+                  } catch(e) {
+                    if (contentEl) contentEl.innerHTML = v;
+                  }
+                }
+              }
+            });
+          } else {
+            // 2. Dạng hàng dữ liệu thông thường (hàng đầu tiên hoặc nhiều hàng)
+            const row0 = data[0];
+            titleVal = row0.title || row0.heading || row0.about_title;
+            introVal = row0.description || row0.desc || row0.intro || row0.intro_desc || row0.about_intro_desc;
+            quoteVal = row0.quote || row0.about_quote;
+
+            if (row0.waves) {
+              if (Array.isArray(row0.waves)) waves = row0.waves;
+              else if (typeof row0.waves === 'string') {
+                try { waves = JSON.parse(row0.waves); } catch(e) {}
+              }
+            } else if (row0.wave_1_title || row0.wave_1_desc) {
+              waves = [
+                { title: row0.wave_1_title || '🌊 Sóng tuổi trẻ khát vọng:', desc: row0.wave_1_desc || '' },
+                { title: row0.wave_2_title || '📡 Sóng truyền thông văn minh:', desc: row0.wave_2_desc || '' },
+                { title: row0.wave_3_title || '🔥 Sóng nhiệt huyết tuổi trẻ:', desc: row0.wave_3_desc || '' }
+              ];
+            } else if (data.length >= 3 && data.some(r => r.wave_name || r.name)) {
+              // Nhiều hàng, mỗi hàng đại diện cho 1 ngọn sóng
+              waves = data.map(r => ({
+                title: r.title || r.name || r.wave_name || '',
+                desc: r.description || r.desc || r.content || ''
+              }));
+            } else if (row0.content) {
+              if (contentEl) contentEl.innerHTML = row0.content;
+            }
+          }
+
+          // Cập nhật DOM hiển thị tức thì
+          if (titleEl && titleVal) {
+            titleEl.innerHTML = titleVal;
+          }
+          if (introEl && introVal) {
+            introEl.innerHTML = introVal;
+          }
+          if (quoteEl && quoteVal) {
+            quoteEl.innerHTML = quoteVal.startsWith('"') ? quoteVal : `"${quoteVal}"`;
+          }
+
+          // Render 3 ngọn sóng
+          if (contentEl && Array.isArray(waves) && waves.length > 0) {
+            const colors = ['text-cyan', 'text-accent-gold', 'text-accent-orange'];
+            const delays = ['', 'reveal-delay-1', 'reveal-delay-2'];
+            contentEl.innerHTML = waves.slice(0, 3).map((w, i) => `
+              <div class="about-wave-card p-4 rounded-2xl bg-white/[0.04] border border-white/10 reveal ${delays[i] || ''}">
+                <div class="text-sm sm:text-base leading-relaxed text-slate-200">
+                  <strong class="${colors[i] || 'text-cyan'} font-bold block sm:inline mb-1 sm:mb-0">${w.title || ''}</strong>
+                  ${w.desc || w.description || ''}
+                </div>
+              </div>
+            `).join('');
+          }
+
+          console.log('[Supabase ve_chung_minh] Đã đồng bộ thành công Ba Ngọn Sóng từ đám mây!');
+        }
+      } catch (err) {
+        console.warn('[Supabase ve_chung_minh] Ngoại lệ khi tải ve_chung_minh:', err);
+      }
+    }
+
+    function initVeChungMinhRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:ve_chung_minh')
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_VE_CHUNG_MINH }, () => {
+            console.log('[Supabase ve_chung_minh] Dữ liệu Về Chúng Mình thay đổi trên đám mây...');
+            fetchVeChungMinhFromSupabase();
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('[Supabase ve_chung_minh] Lỗi realtime ve_chung_minh:', err);
+      }
+    }
+    window.fetchVeChungMinhFromSupabase = fetchVeChungMinhFromSupabase;
+
+    // =============================================================
+    // ĐỒNG BỘ POPUP CHI TIẾT THỐNG KÊ (BẢNG 'thong_ke_chi_tiet')
+    // =============================================================
+    async function fetchStatDetailsFromSupabase() {
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_THONG_KE_CHI_TIET)
+          .select('*');
+
+        if (error) {
+          console.warn('[Supabase thong_ke_chi_tiet] Lỗi tải chi tiết thống kê:', error);
+          return;
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          data.forEach((row, idx) => {
+            const key = String(row.stat_id || row.card_id || row.id || (idx + 1));
+            if (!STAT_DETAILS_DATA[key]) {
+              STAT_DETAILS_DATA[key] = {
+                badge: '',
+                badgeClass: 'bg-cyan/15 text-cyan border-cyan/30',
+                title: '',
+                items: [],
+                quote: ''
+              };
+            }
+
+            if (row.badge) STAT_DETAILS_DATA[key].badge = row.badge;
+            if (row.badge_class || row.badgeClass) STAT_DETAILS_DATA[key].badgeClass = row.badge_class || row.badgeClass;
+            if (row.title) STAT_DETAILS_DATA[key].title = row.title;
+            if (row.quote) STAT_DETAILS_DATA[key].quote = row.quote;
+
+            // Xử lý items dạng mảng hoặc chuỗi phân dòng
+            if (Array.isArray(row.items)) {
+              STAT_DETAILS_DATA[key].items = row.items;
+            } else if (typeof row.items === 'string') {
+              try {
+                const parsed = JSON.parse(row.items);
+                if (Array.isArray(parsed)) STAT_DETAILS_DATA[key].items = parsed;
+                else STAT_DETAILS_DATA[key].items = row.items.split('\n').filter(Boolean);
+              } catch(e) {
+                STAT_DETAILS_DATA[key].items = row.items.split('\n').filter(Boolean);
+              }
+            } else if (row.content || row.details || row.desc) {
+              const raw = String(row.content || row.details || row.desc);
+              STAT_DETAILS_DATA[key].items = raw.split('\n').filter(Boolean);
+            }
+          });
+
+          try {
+            localStorage.setItem('song_of_ht_stat_details_v2', JSON.stringify(STAT_DETAILS_DATA));
+          } catch (e) {}
+
+          console.log('[Supabase thong_ke_chi_tiet] Đã đồng bộ chi tiết popup thống kê thành công!');
+        }
+      } catch (err) {
+        console.warn('[Supabase thong_ke_chi_tiet] Ngoại lệ khi tải popup thống kê:', err);
+      }
+    }
+
+    function initStatDetailsRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:thong_ke_chi_tiet')
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_THONG_KE_CHI_TIET }, () => {
+            console.log('[Supabase thong_ke_chi_tiet] Dữ liệu popup chi tiết thay đổi trên đám mây...');
+            fetchStatDetailsFromSupabase();
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('[Supabase thong_ke_chi_tiet] Lỗi realtime thong_ke_chi_tiet:', err);
+      }
+    }
+    window.fetchStatDetailsFromSupabase = fetchStatDetailsFromSupabase;
+
+    // =============================================================
+    // ĐỒNG BỘ KHU VỰC 'NHỮNG CON SỐ BIẾT NÓI' (BẢNG 'thong_ke')
+    // =============================================================
+    async function fetchThongKeFromSupabase() {
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_THONG_KE)
+          .select('*');
+
+        if (error) {
+          console.warn('[Supabase thong_ke] Lỗi tải dữ liệu bảng thong_ke:', error);
+          return;
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          // Sắp xếp theo id tăng dần
+          const sorted = [...data].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+
+          sorted.forEach((row, idx) => {
+            const cardIndex = idx + 1;
+            if (cardIndex > 4) return;
+
+            const numEl = document.querySelector(`[data-editable-id="stat_num_${cardIndex}"]`);
+            const unitEl = document.querySelector(`[data-editable-id="stat_unit_${cardIndex}"]`);
+            const labelEl = document.querySelector(`[data-editable-id="stat_label_${cardIndex}"]`);
+            const subEl = document.querySelector(`[data-editable-id="stat_sub_${cardIndex}"]`);
+
+            const rawValue = String(row.value ?? row.val ?? row.number ?? row.score ?? '').trim();
+            if (numEl && rawValue) {
+              const match = rawValue.match(/^(\d+(?:[.,]\d+)?)(.*)$/);
+              if (match) {
+                numEl.textContent = match[1];
+                numEl.setAttribute('data-target', match[1].replace(/[^0-9]/g, ''));
+                if (unitEl && match[2]) {
+                  unitEl.textContent = match[2].trim();
+                }
+              } else {
+                numEl.textContent = rawValue;
+              }
+            }
+
+            const titleText = row.title || row.label || row.name;
+            if (labelEl && titleText) {
+              labelEl.textContent = titleText;
+            }
+
+            const descText = row.description || row.desc || row.sub;
+            if (subEl && descText) {
+              subEl.textContent = descText;
+            }
+          });
+          console.log('[Supabase thong_ke] Đã đồng bộ số liệu thành công từ bảng thong_ke!');
+        }
+      } catch (err) {
+        console.warn('[Supabase thong_ke] Ngoại lệ khi tải thống kê:', err);
+      }
+    }
+
+    function initThongKeRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:thong_ke')
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_THONG_KE }, () => {
+            console.log('[Supabase thong_ke] Phát hiện thay đổi số liệu thống kê từ đám mây...');
+            fetchThongKeFromSupabase();
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('[Supabase thong_ke] Lỗi kết nối realtime thong_ke:', err);
+      }
+    }
+    window.fetchThongKeFromSupabase = fetchThongKeFromSupabase;
+
+    // =============================================================
+    // ENGINE: ADMIN RESET DỮ LIỆU ĐÁM MÂY SUPABASE (TIM, KY, BXH)
+    // =============================================================
+    async function adminResetHeartsCloud() {
+      if (typeof requireAdminAuth === 'function' && !requireAdminAuth('đặt lại số tim')) return;
+      if (!confirm('⚠️ CẢNH BÁO QUẢN TRỊ VIÊN:\n\nBạn có chắc chắn muốn đặt lại SỐ LƯỢT THẢ TIM về 0 trên hệ thống Supabase?\nThao tác này sẽ đồng bộ số 0 lên tất cả các thiết bị.')) {
+        return;
+      }
+
+      const client = getSupabase();
+      if (!client) {
+        showToast('⚠️ Không tìm thấy kết nối Supabase!');
+        return;
+      }
+
+      try {
+        if (heartSupabaseRowId) {
+          await client.from(SUPABASE_TABLE_TIM).update({ count: 0 }).eq('id', heartSupabaseRowId);
+        } else {
+          await client.from(SUPABASE_TABLE_TIM).update({ count: 0 }).neq('id', 0);
+        }
+
+        localStorage.setItem(STORAGE_KEY_HEARTS, 0);
+        const display = document.getElementById('heartCountDisplay');
+        if (display) display.textContent = '0';
+        showToast('✅ Đã đặt lại số lượt thả tim về 0 thành công trên Supabase!');
+      } catch (err) {
+        console.error('Lỗi khi reset tim:', err);
+        showToast('⚠️ Lỗi khi reset tim: ' + (err.message || 'Lỗi mạng'));
+      }
+    }
+    window.adminResetHeartsCloud = adminResetHeartsCloud;
+
+    async function adminResetGraffitiCloud() {
+      if (typeof requireAdminAuth === 'function' && !requireAdminAuth('xóa tường lưu bút')) return;
+      if (!confirm('⚠️ CẢNH BÁO QUẢN TRỊ VIÊN:\n\nBạn có chắc chắn muốn XÓA TOÀN BỘ LỜI NHẮN & CHỮ KÝ trên Tường Kỷ Niệm (bảng "ky" trên Supabase)?\nDữ liệu đã xóa sẽ không thể phục hồi!')) {
+        return;
+      }
+
+      const client = getSupabase();
+      if (!client) {
+        showToast('⚠️ Không tìm thấy kết nối Supabase!');
+        return;
+      }
+
+      try {
+        await client.from(SUPABASE_TABLE_KY).delete().neq('id', 0);
+        localStorage.setItem(STORAGE_KEY_GRAFFITI, JSON.stringify([]));
+        renderGraffitiWall([]);
+        showToast('✅ Đã xóa toàn bộ lời nhắn và chữ ký trên bảng "ky" thành công!');
+      } catch (err) {
+        console.error('Lỗi khi xóa bảng ky:', err);
+        showToast('⚠️ Lỗi khi xóa chữ ký: ' + (err.message || 'Lỗi mạng'));
+      }
+    }
+    window.adminResetGraffitiCloud = adminResetGraffitiCloud;
+
+    async function adminResetLeaderboardCloud() {
+      if (typeof requireAdminAuth === 'function' && !requireAdminAuth('reset Bảng Xếp Hạng')) return;
+      if (!confirm('⚠️ CẢNH BÁO QUẢN TRỊ VIÊN:\n\nBạn có chắc chắn muốn ĐƯA ĐIỂM CỐNG HIẾN VỀ 0 cho toàn bộ thành viên trên bảng "bxh" của Supabase?')) {
+        return;
+      }
+
+      const client = getSupabase();
+      if (!client) {
+        showToast('⚠️ Không tìm thấy kết nối Supabase!');
+        return;
+      }
+
+      try {
+        await client.from(SUPABASE_TABLE_BXH).update({ score: 0 }).neq('id', 0);
+        currentCloudUserScore = 0;
+        updateLeaderboardLiveScore();
+        await fetchLeaderboardFromSupabase();
+        showToast('✅ Đã đưa điểm cống hiến của toàn bộ thành viên về 0 trên Supabase!');
+      } catch (err) {
+        console.error('Lỗi khi reset bxh:', err);
+        showToast('⚠️ Lỗi khi reset BXH: ' + (err.message || 'Lỗi mạng'));
+      }
+    }
+    window.adminResetLeaderboardCloud = adminResetLeaderboardCloud;
+
+    function initSiteSettingsRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:site_settings')
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_SITE_SETTINGS }, () => {
+            console.log('[Supabase site_settings] Dữ liệu cấu hình trang thay đổi từ đám mây...');
+            fetchViewCounterFromSupabase();
+            fetchCustomLinksFromSupabase();
+          })
+          .subscribe();
+      } catch (e) {
+        console.warn('[Supabase site_settings] Lỗi realtime site_settings:', e);
+      }
+    }
+    // Polling định kỳ mỗi 15 giây cho cấu hình trang
+    setInterval(fetchViewCounterFromSupabase, 15000);
     window.openAdminAuthModal = openAdminAuthModal;
     window.closeAdminAuthModal = closeAdminAuthModal;
   </script>
@@ -12495,7 +13333,61 @@ function initGraffitiWall() {
                   <input type="file" id="adminRestoreFileInput" accept=".json" class="hidden" onchange="importDataBackupJSON(event)" />
                 </label>
               </div>
-            </div>
+            
+
+            <!-- KHỐI QUẢN TRỊ DỮ LIỆU ĐÁM MÂY (SUPABASE RESET SUITE) -->
+            <div class="mt-6 p-4 sm:p-5 rounded-2xl bg-rose-950/25 border border-rose-500/30 space-y-4">
+              <div class="flex items-center justify-between pb-2 border-b border-rose-500/20">
+                <div>
+                  <h5 class="text-xs sm:text-sm font-black text-rose-300 flex items-center gap-1.5 uppercase tracking-wide">
+                    <span>⚠️</span> <span>Vùng Quản Trị & Đặt Lại Dữ Liệu Đám Mây (Supabase Reset)</span>
+                  </h5>
+                  <p class="text-[11px] text-slate-300 mt-0.5">Đặt lại các bảng dữ liệu đám mây khi bắt đầu sự kiện hoặc năm học mới.</p>
+                </div>
+                <span class="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[10px] font-black uppercase">Admin Only</span>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <!-- Reset Lượt Thả Tim -->
+                <div class="p-3.5 rounded-xl bg-black/40 border border-white/10 flex flex-col justify-between space-y-2.5">
+                  <div>
+                    <span class="text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                      <span>❤️</span> <span>Reset Lượt Thả Tim</span>
+                    </span>
+                    <p class="text-[11px] text-slate-400 mt-1">Đưa số đếm lượt thả tim trên bảng "tim" về 0.</p>
+                  </div>
+                  <button type="button" onclick="adminResetHeartsCloud()" class="w-full py-2 px-3 rounded-lg bg-rose-600/30 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer">
+                    <span>🔄 Đặt Về 0</span>
+                  </button>
+                </div>
+
+                <!-- Xóa Tường Chữ Ký & Lưu Bút -->
+                <div class="p-3.5 rounded-xl bg-black/40 border border-white/10 flex flex-col justify-between space-y-2.5">
+                  <div>
+                    <span class="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <span>✍️</span> <span>Xóa Tường Lưu Bút</span>
+                    </span>
+                    <p class="text-[11px] text-slate-400 mt-1">Xóa toàn bộ các bản ghi lời chúc & nét vẽ trên bảng "ky".</p>
+                  </div>
+                  <button type="button" onclick="adminResetGraffitiCloud()" class="w-full py-2 px-3 rounded-lg bg-amber-600/30 hover:bg-amber-600 text-amber-200 hover:text-white border border-amber-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer">
+                    <span>🗑️ Xóa Lời Chúc</span>
+                  </button>
+                </div>
+
+                <!-- Reset BXH & Điểm Cống Hiến -->
+                <div class="p-3.5 rounded-xl bg-black/40 border border-white/10 flex flex-col justify-between space-y-2.5">
+                  <div>
+                    <span class="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                      <span>🏆</span> <span>Reset BXH Điểm Số</span>
+                    </span>
+                    <p class="text-[11px] text-slate-400 mt-1">Đưa điểm cống hiến của tất cả thành viên trên bảng "bxh" về 0.</p>
+                  </div>
+                  <button type="button" onclick="adminResetLeaderboardCloud()" class="w-full py-2 px-3 rounded-lg bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer">
+                    <span>⚡ Reset Điểm 0</span>
+                  </button>
+                </div>
+              </div>
+            </div></div>
           </div>
 
           <!-- TAB 12: CẤU HÌNH MINI-GAME & MÃ BÍ MẬT EASTER EGGS -->
@@ -13448,7 +14340,91 @@ function initGraffitiWall() {
         .replace(/'/g, '&#039;');
     }
 
+    window.cloudViralMedia = null;
+
+    // Tải danh sách ấn phẩm tiêu điểm trực tiếp từ bảng 'viral_media' trên Supabase
+    async function fetchViralMediaFromSupabase() {
+      const client = getSupabase();
+      if (!client) {
+        renderViralMedia();
+        return;
+      }
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_VIRAL_MEDIA)
+          .select('*')
+          .order('rank', { ascending: true });
+
+        if (error) {
+          console.warn('[Supabase viral_media] Lỗi tải dữ liệu viral media:', error);
+          renderViralMedia();
+          return;
+        }
+
+        if (Array.isArray(data) && data.length > 0) {
+          const cloudItems = data.map((row, idx) => {
+            const rank = Number(row.rank) || (idx + 1);
+            let defaultBadge = '✨ TOP 3 • LAN TỎA MẠNH MẼ';
+            if (rank === 1) defaultBadge = '👑 TOP 1 TRENDING';
+            else if (rank === 2) defaultBadge = '💎 TOP 2 • ĐẠT MỐC KỶ LỤC';
+
+            return {
+              id: row.id || ('viral_' + rank),
+              rank: rank,
+              type: row.type || 'video',
+              typeLabel: row.typeLabel || row.type_label || (row.type === 'album' ? '📸 Album Ảnh' : '🎬 Video Recap 4K'),
+              duration: row.duration || '',
+              badge: row.badge || defaultBadge,
+              title: row.title || 'Ấn phẩm tiêu điểm Sóng of HT',
+              desc: row.desc || row.description || row.summary || '',
+              thumbnail: row.thumbnail || row.image || row.image_url || 'assets/banner-song-of-ht.jpg',
+              views: row.views || (row.view_count ? `${Number(row.view_count).toLocaleString('vi-VN')} Lượt Xem` : '120.000+ Lượt Xem'),
+              likes: row.likes || (row.like_count ? `${Number(row.like_count).toLocaleString('vi-VN')} Thích` : '12.5K Thích'),
+              comments: row.comments || '950 Bình Luận',
+              shares: row.shares || '1.8K Chia Sẻ',
+              btnUrl: row.btnUrl || row.btn_url || row.url || row.link || '#portfolio',
+              btnText: row.btnText || row.btn_text || (rank === 1 ? 'Xem Video Đầy Đủ' : 'Xem Thêm →'),
+              visible: row.visible !== false
+            };
+          });
+
+          window.cloudViralMedia = cloudItems;
+          try {
+            localStorage.setItem(VIRAL_MEDIA_STORAGE_KEY, JSON.stringify(cloudItems));
+          } catch(e) {}
+          renderViralMedia(cloudItems);
+          console.log(`[Supabase viral_media] Đã tải ${cloudItems.length} ấn phẩm tiêu điểm từ đám mây!`);
+        } else {
+          renderViralMedia();
+        }
+      } catch (err) {
+        console.warn('[Supabase viral_media] Ngoại lệ khi tải viral media:', err);
+        renderViralMedia();
+      }
+    }
+
+    function initViralMediaRealtime() {
+      const client = getSupabase();
+      if (!client || typeof client.channel !== 'function') return;
+      try {
+        client
+          .channel('realtime:viral_media')
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_VIRAL_MEDIA }, () => {
+            console.log('[Supabase viral_media] Có thay đổi ấn phẩm tiêu điểm trên đám mây...');
+            fetchViralMediaFromSupabase();
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('[Supabase viral_media] Lỗi realtime viral media:', err);
+      }
+    }
+    window.fetchViralMediaFromSupabase = fetchViralMediaFromSupabase;
+
     function getStoredViralMedia() {
+      if (window.cloudViralMedia && Array.isArray(window.cloudViralMedia) && window.cloudViralMedia.length > 0) {
+        return window.cloudViralMedia;
+      }
       try {
         const raw = localStorage.getItem(VIRAL_MEDIA_STORAGE_KEY);
         if (!raw) {
@@ -13473,11 +14449,11 @@ function initGraffitiWall() {
       }
     }
 
-    function renderViralMedia() {
+    function renderViralMedia(customItems) {
       const grid = document.getElementById('viralMediaGrid');
       if (!grid) return;
 
-      const allItems = getStoredViralMedia();
+      const allItems = (customItems && Array.isArray(customItems)) ? customItems : getStoredViralMedia();
       const items = allItems.filter(item => item.visible !== false).sort((a, b) => a.rank - b.rank);
 
       if (items.length === 0) {
@@ -13583,7 +14559,7 @@ function initGraffitiWall() {
       grid.innerHTML = html;
       updateViralAdminButtonsVisibility();
     }
-
+    window.renderViralMedia = renderViralMedia;
     function renderAdminViralMedia() {
       const container = document.getElementById('adminViralMediaList');
       if (!container) return;
@@ -14334,6 +15310,8 @@ function initGraffitiWall() {
      * 3. FAN LEADERBOARD (BẢNG XẾP HẠNG FAN CỨNG SÓNG OF HT)
      * ===================================================================== */
     const STORAGE_KEY_LEADERBOARD = 'song_of_ht_fan_leaderboard';
+    let bxhSyncTimer = null;
+    let currentCloudUserScore = null;
 
     const DEFAULT_LEADERBOARD_ENTRIES = [
   {
@@ -14345,61 +15323,96 @@ function initGraffitiWall() {
   }
 ];
 
+    // Truy xuất điểm số của người dùng trực tiếp từ bảng 'bxh' trên Supabase
+    async function fetchUserScoreFromSupabase(name) {
+      if (!name) return;
+      const client = getSupabase();
+      if (!client) return;
+
+      try {
+        const { data, error } = await client
+          .from(SUPABASE_TABLE_BXH)
+          .select('*')
+          .eq('name', name)
+          .limit(1);
+
+        if (data && data.length > 0) {
+          currentCloudUserScore = Number(data[0].score) || 0;
+          updateLeaderboardLiveScore();
+        } else {
+          // Khởi tạo điểm cho thành viên mới trên Supabase
+          const baseScore = 150;
+          currentCloudUserScore = baseScore;
+          await client.from(SUPABASE_TABLE_BXH).insert([{ name, score: baseScore }]);
+          updateLeaderboardLiveScore();
+        }
+      } catch (e) {
+        console.warn('[Supabase bxh] Lỗi fetch user score:', e);
+      }
+    }
+
+    // Hàm cộng điểm cống hiến trực tiếp vào bảng 'bxh' trên Supabase
+    function addContributionPoints(pts) {
+      const savedUserNick = localStorage.getItem('song_of_ht_user_nickname');
+      if (!savedUserNick) return;
+
+      if (currentCloudUserScore === null) currentCloudUserScore = 150;
+      currentCloudUserScore += pts;
+
+      const pointsEl = document.getElementById('userLivePoints');
+      if (pointsEl) {
+        pointsEl.textContent = currentCloudUserScore.toLocaleString('vi-VN');
+        pointsEl.classList.remove('animate-pulse');
+        void pointsEl.offsetWidth;
+        pointsEl.classList.add('animate-pulse');
+      }
+
+      const client = getSupabase();
+      if (!client) return;
+
+      if (bxhSyncTimer) clearTimeout(bxhSyncTimer);
+      bxhSyncTimer = setTimeout(async () => {
+        try {
+          const { data } = await client
+            .from(SUPABASE_TABLE_BXH)
+            .select('id, name, score')
+            .eq('name', savedUserNick)
+            .limit(1);
+
+          if (data && data.length > 0) {
+            const newScore = (data[0].score || 0) + pts;
+            currentCloudUserScore = newScore;
+            await client.from(SUPABASE_TABLE_BXH).update({ score: newScore }).eq('id', data[0].id);
+          } else {
+            await client.from(SUPABASE_TABLE_BXH).insert([{ name: savedUserNick, score: currentCloudUserScore }]);
+          }
+          fetchLeaderboardFromSupabase();
+        } catch (e) {
+          console.warn('[Supabase bxh] Lỗi cập nhật điểm:', e);
+        }
+      }, 1000);
+    }
+    window.addContributionPoints = addContributionPoints;
+
     function calculateUserContributionScore() {
+      if (currentCloudUserScore !== null) {
+        return { total: currentCloudUserScore, hearts: 0, notes: 0, surfScore: 0 };
+      }
       const hearts = parseInt(localStorage.getItem('song_of_ht_user_hearts'), 10) || 0;
       const notes = parseInt(localStorage.getItem('song_of_ht_user_notes'), 10) || 0;
       const surfHigh = parseInt(localStorage.getItem('song_of_ht_surf_highscore'), 10) || 0;
       const userSurf = parseInt(localStorage.getItem('song_of_ht_user_surf'), 10) || 0;
       const basePoints = 150;
-      // Cộng dồn toàn bộ điểm cống hiến từ lượt chơi game tích lũy userSurf kết hợp kỷ lục surfHigh
       const total = basePoints + (hearts * 5) + (notes * 50) + userSurf + (surfHigh * 2);
       return { total, hearts, notes, surfScore: Math.max(surfHigh, userSurf) };
     }
 
     function updateLeaderboardLiveScore() {
-
-      const stats = calculateUserContributionScore();
-
       const pointsEl = document.getElementById('userLivePoints');
-
-      const heartsEl = document.getElementById('userStatsHearts');
-
-      const notesEl = document.getElementById('userStatsNotes');
-
-      const surfEl = document.getElementById('userStatsSurf');
-
-
-
       if (pointsEl) {
-
-        pointsEl.textContent = stats.total.toLocaleString('vi-VN');
-
-        pointsEl.classList.remove('animate-pulse');
-
-        void pointsEl.offsetWidth;
-
-        pointsEl.classList.add('animate-pulse');
-
+        const score = currentCloudUserScore !== null ? currentCloudUserScore : calculateUserContributionScore().total;
+        pointsEl.textContent = score.toLocaleString('vi-VN');
       }
-
-      if (heartsEl) heartsEl.textContent = stats.hearts;
-
-      if (notesEl) {
-
-        notesEl.textContent = stats.notes;
-
-        notesEl.classList.remove('animate-bounce');
-
-        void notesEl.offsetWidth;
-
-        notesEl.classList.add('animate-bounce');
-
-        setTimeout(() => notesEl.classList.remove('animate-bounce'), 1000);
-
-      }
-
-      if (surfEl) surfEl.textContent = stats.surfScore;
-
     }
 
     function getSavedLeaderboard() {
@@ -14412,21 +15425,24 @@ function initGraffitiWall() {
       }
     }
 
-    let bxhSyncTimer = null;
-
+    // Tải toàn bộ Bảng Xếp Hạng trực tiếp từ bảng 'bxh' trên Supabase
     async function fetchLeaderboardFromSupabase() {
       const client = getSupabase();
-      if (!client) return;
+      if (!client) {
+        renderLeaderboard();
+        return;
+      }
 
       try {
         const { data, error } = await client
           .from(SUPABASE_TABLE_BXH)
           .select('*')
           .order('score', { ascending: false })
-          .limit(20);
+          .limit(50);
 
         if (error) {
           console.warn('[Supabase bxh] Lỗi truy vấn bảng bxh:', error);
+          renderLeaderboard();
           return;
         }
 
@@ -14449,9 +15465,22 @@ function initGraffitiWall() {
 
           localStorage.setItem(STORAGE_KEY_LEADERBOARD, JSON.stringify(cloudEntries));
           renderLeaderboard(cloudEntries);
+
+          // Cập nhật điểm cho user hiện tại nếu có trong danh sách
+          const savedUserNick = localStorage.getItem('song_of_ht_user_nickname');
+          if (savedUserNick) {
+            const userInList = cloudEntries.find(e => e.name.toLowerCase() === savedUserNick.toLowerCase());
+            if (userInList) {
+              currentCloudUserScore = userInList.score;
+              updateLeaderboardLiveScore();
+            }
+          }
+        } else {
+          renderLeaderboard();
         }
       } catch (err) {
         console.warn('[Supabase bxh] Ngoại lệ khi tải BXH:', err);
+        renderLeaderboard();
       }
     }
 
@@ -14462,6 +15491,7 @@ function initGraffitiWall() {
         client
           .channel('realtime:bxh')
           .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_BXH }, () => {
+            console.log('[Supabase bxh] Phát hiện thay đổi BXH trên đám mây...');
             fetchLeaderboardFromSupabase();
           })
           .subscribe();
@@ -14469,6 +15499,9 @@ function initGraffitiWall() {
         console.warn('[Supabase bxh] Lỗi realtime bxh:', err);
       }
     }
+
+    // Tự động polling định kỳ mỗi 10 giây để đảm bảo điểm BXH luôn khớp 100%
+    setInterval(fetchLeaderboardFromSupabase, 10000);
 
     function renderLeaderboard(customEntries) {
       const listContainer = document.getElementById('leaderboardEntriesList');
@@ -14492,7 +15525,7 @@ function initGraffitiWall() {
 
       listContainer.innerHTML = '';
 
-      // KHI ADMIN ĐANG BẬT: Hiển thị toàn bộ danh sách để Admin dễ dàng quản lý / dọn dẹp
+      // KHI ADMIN ĐANG BẬT: Hiển thị toàn bộ danh sách để Admin dễ dàng quản lý
       // KHI KHÁCH XEM: Giới hạn cố định Top 5 người dẫn đầu
       const displayEntries = isAdminActive ? entries : entries.slice(0, 5);
 
@@ -14520,11 +15553,11 @@ function initGraffitiWall() {
           bgStyle = 'bg-gradient-to-r from-slate-400/20 via-slate-500/10 to-transparent border-slate-300/40 text-slate-200';
         } else if (idx === 2) {
           medal = '🥉';
-          bgStyle = 'bg-gradient-to-r from-amber-700/20 via-orange-800/10 to-transparent border-amber-600/40 text-amber-300';
+          bgStyle = 'bg-gradient-to-r from-amber-700/20 via-orange-600/10 to-transparent border-amber-600/40 text-amber-300';
         }
 
         const isCurrentRegisteredUser = savedUserNick && entry.name.toLowerCase() === savedUserNick.toLowerCase();
-        const userHighlight = isCurrentRegisteredUser ? 'ring-2 ring-cyan/60' : '';
+        const userHighlight = isCurrentRegisteredUser ? 'ring-2 ring-cyan/60 bg-cyan-950/40' : '';
 
         const row = document.createElement('div');
         row.className = `p-3 sm:p-3.5 rounded-2xl border ${bgStyle} ${glow} ${userHighlight} flex items-center justify-between gap-3 transition-all hover:scale-[1.01]`;
@@ -14544,13 +15577,12 @@ function initGraffitiWall() {
               <div class="text-xs sm:text-sm font-black text-accent-gold">${entry.score.toLocaleString('vi-VN')} <span class="text-[10px] text-slate-400 font-normal">pts</span></div>
               <div class="text-[10px] text-slate-400">Hạng #${idx + 1}</div>
             </div>
-            <!-- Nút Thao Tác Quản Trị: Sửa & Xóa (Chỉ hiển thị khi Admin Mode đang bật) -->
             ${isAdminActive ? `
               <div class="flex items-center gap-1.5 ml-1 shrink-0">
                 <button type="button" onclick="adminEditLeaderboardEntry('${entry.id}')" class="p-1.5 px-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 hover:text-white text-xs font-bold transition-all cursor-pointer shadow-sm flex items-center gap-1" title="Chỉnh sửa tên, lớp hoặc số điểm">
                   <span>✏️</span> <span class="hidden sm:inline text-[11px]">Sửa</span>
                 </button>
-                <button type="button" onclick="adminDeleteLeaderboardEntry('${entry.id}', '${entry.name}')" class="p-1.5 px-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 hover:text-white text-xs font-bold transition-all cursor-pointer shadow-sm flex items-center gap-1" title="Xóa tài khoản/tên phá phách này">
+                <button type="button" onclick="adminDeleteLeaderboardEntry('${entry.id}', '${entry.name}')" class="p-1.5 px-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 hover:text-white text-xs font-bold transition-all cursor-pointer shadow-sm flex items-center gap-1" title="Xóa tài khoản/tên này">
                   <span>🗑️</span> <span class="hidden sm:inline text-[11px]">Xóa</span>
                 </button>
               </div>
@@ -14560,7 +15592,6 @@ function initGraffitiWall() {
         listContainer.appendChild(row);
       });
 
-      // Hiển thị dòng thông báo vị trí riêng biệt nếu người dùng nằm ngoài Top 5 (chỉ khi không ở Admin Mode)
       let outsideBadge = document.getElementById('leaderboardOutsideTop5Badge');
       if (savedUserNick && !isAdminActive) {
         const userIndex = entries.findIndex(e => e.name.toLowerCase() === savedUserNick.toLowerCase());
@@ -14592,6 +15623,12 @@ function initGraffitiWall() {
       updateLeaderboardLiveScore();
     }
 
+    function syncLiveScoreToLeaderboard() {
+      const savedUserNick = localStorage.getItem('song_of_ht_user_nickname');
+      if (savedUserNick) {
+        fetchUserScoreFromSupabase(savedUserNick);
+      }
+    }
     function registerToLeaderboard() {
       const input = document.getElementById('leaderboardNicknameInput');
       if (!input) return;
@@ -14614,6 +15651,7 @@ function initGraffitiWall() {
 
       // Save nickname to localStorage (One-time registration)
       localStorage.setItem('song_of_ht_user_nickname', nickname);
+      fetchUserScoreFromSupabase(nickname);
 
       const stats = calculateUserContributionScore();
       let entries = getSavedLeaderboard();
