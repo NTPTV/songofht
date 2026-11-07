@@ -15317,9 +15317,9 @@ function initGraffitiWall() {
           const { data, error } = await client
             .from(SUPABASE_TABLE_GOP_Y)
             .insert([{
-              name: sender,
+              sender_name: sender,
               topic: topic,
-              message: message
+              content: message
             }]);
 
           if (error) {
