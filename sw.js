@@ -3,7 +3,7 @@
 // THPT Hà Trung • Phú Vang, Thành Phố Huế
 // ===================================================================
 
-const CACHE_NAME = 'song-of-ht-cache-v4';
+const CACHE_NAME = 'song-of-ht-cache-v5';
 
 // Danh sách tài nguyên cốt lõi cần precache khi cài đặt
 const PRECACHE_ASSETS = [

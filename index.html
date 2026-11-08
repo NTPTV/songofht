@@ -7929,19 +7929,27 @@
     }
 
     function handleAuthSubmit(e) {
-      e.preventDefault();
+      if (e) e.preventDefault();
       const pwd = document.getElementById('adminPasswordInput').value.trim();
       if (pwd === SECRET_ADMIN_PASS) {
-        sessionStorage.setItem(STORAGE_KEY_ADMIN, 'true');
-        localStorage.setItem(STORAGE_KEY_ADMIN, 'false');
+        try { sessionStorage.setItem(STORAGE_KEY_ADMIN, 'true'); } catch (err) {}
+        try { localStorage.setItem(STORAGE_KEY_ADMIN, 'false'); } catch (err) {}
         closeAdminAuthModal();
-        enableAdminMode(true);
-        fireConfetti('admin');
+        try {
+          enableAdminMode(true);
+          fireConfetti('admin');
+        } catch (err) {
+          console.error('[Admin] Đã xác thực nhưng có lỗi khi dựng bảng quản trị:', err);
+          showToast('✅ Đã xác thực Admin. Một phần bảng quản trị cần tải lại trang.');
+        }
       } else {
         document.getElementById('adminAuthError').classList.remove('hidden');
       }
     }
 
+    // Gắn rõ các hàm được gọi trực tiếp từ thuộc tính onclick/onsubmit trong HTML.
+    window.handleAdminTriggerClick = handleAdminTriggerClick;
+    window.handleAuthSubmit = handleAuthSubmit;
     window.enableAdminMode = enableAdminMode;
     function enableAdminMode(showWelcomeToast = true) {
       if (typeof renderGraffitiWall === "function") renderGraffitiWall();
@@ -10812,7 +10820,7 @@
         fire(0.1, { spread: 120, startVelocity: 45 });
       } else if (mode === 'heart') {
         confetti({
-          particleCount: 30,
+          particleCount: 12,
           spread: 60,
           origin: { y: 0.7 },
           colors: ['#EC4899', '#F43F5E', '#FF6B35', '#00E5FF']
@@ -11324,6 +11332,7 @@
     let heartInlineStorageTimer = null;
     let liveScoreSyncTimer = null;
     let lastHeartCelebrationAt = 0;
+    let lastHeartConfettiAt = 0;
     let heartSyncRetryCount = 0;
 
     function scheduleHeartInlineSnapshot(count) {
@@ -11549,10 +11558,10 @@
       // Hiệu ứng nhẹ trên điện thoại; bão sao chỉ xuất hiện thỉnh thoảng.
       const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const btn = (e && e.currentTarget) || document.getElementById('sendHeartBtn');
-      if (!reducedMotion && btn && document.visibilityState === 'visible') {
+      if (btn && document.visibilityState === 'visible') {
         const rect = btn.getBoundingClientRect();
         const emojis = ['💖', '✨', '🌊', '💕', '🔥', '🌸', '🐚', '⭐'];
-        const particleCount = window.innerWidth <= 768 ? 2 : 4;
+        const particleCount = reducedMotion ? 1 : (window.innerWidth <= 768 ? 4 : 5);
         for (let i = 0; i < particleCount; i++) {
           const particle = document.createElement('span');
           particle.className = 'floating-heart-particle text-xl sm:text-2xl';
@@ -11564,12 +11573,14 @@
         }
       }
 
+      if (!reducedMotion && now - lastHeartConfettiAt >= 900) {
+        lastHeartConfettiAt = now;
+        fireConfetti('heart');
+      }
+
       if (userHeartClickCount % 10 === 0 && now - lastHeartCelebrationAt >= 8000) {
         lastHeartCelebrationAt = now;
-        if (!reducedMotion) {
-          triggerMeteorRain();
-          fireConfetti('heart');
-        }
+        if (!reducedMotion) triggerMeteorRain();
       }
     }
 
@@ -11586,37 +11597,48 @@ function initGraffitiWall() {
       graffitiCtx.strokeStyle = currentGraffitiColor;
       graffitiCtx.lineWidth = currentGraffitiBrushSize;
 
-      // Chuột Mouse Events
-      graffitiCanvas.addEventListener('mousedown', startGraffitiDraw);
-      graffitiCanvas.addEventListener('mousemove', drawGraffiti);
-      window.addEventListener('mouseup', stopGraffitiDraw);
-
-      // Chạm Touch Events cho Mobile & Tablet
-      graffitiCanvas.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        const touch = e.touches[0];
-        const rect = graffitiCanvas.getBoundingClientRect();
-        const mouseEvent = new MouseEvent('mousedown', {
-          clientX: touch.clientX,
-          clientY: touch.clientY
+      // Pointer Events xử lý thống nhất bút, chuột và ngón tay trên điện thoại.
+      graffitiCanvas.style.touchAction = 'none';
+      if (window.PointerEvent) {
+        graffitiCanvas.addEventListener('pointerdown', (e) => {
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          if (e.cancelable) e.preventDefault();
+          try { graffitiCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+          startGraffitiDraw(e);
+        }, { passive: false });
+        graffitiCanvas.addEventListener('pointermove', (e) => {
+          if (e.pointerType === 'touch' && e.cancelable) e.preventDefault();
+          drawGraffiti(e);
+        }, { passive: false });
+        graffitiCanvas.addEventListener('pointerup', stopGraffitiDraw);
+        graffitiCanvas.addEventListener('pointercancel', stopGraffitiDraw);
+        graffitiCanvas.addEventListener('lostpointercapture', stopGraffitiDraw);
+      } else {
+        graffitiCanvas.addEventListener('mousedown', startGraffitiDraw);
+        graffitiCanvas.addEventListener('mousemove', drawGraffiti);
+        window.addEventListener('mouseup', stopGraffitiDraw);
+        graffitiCanvas.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          const touch = e.touches[0];
+          const mouseEvent = new MouseEvent('mousedown', {
+            clientX: touch.clientX,
+            clientY: touch.clientY
+          });
+          graffitiCanvas.dispatchEvent(mouseEvent);
+        }, { passive: false });
+        graffitiCanvas.addEventListener('touchmove', (e) => {
+          e.preventDefault();
+          const touch = e.touches[0];
+          const mouseEvent = new MouseEvent('mousemove', {
+            clientX: touch.clientX,
+            clientY: touch.clientY
+          });
+          graffitiCanvas.dispatchEvent(mouseEvent);
+        }, { passive: false });
+        graffitiCanvas.addEventListener('touchend', () => {
+          window.dispatchEvent(new MouseEvent('mouseup', {}));
         });
-        graffitiCanvas.dispatchEvent(mouseEvent);
-      }, { passive: false });
-
-      graffitiCanvas.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        const touch = e.touches[0];
-        const mouseEvent = new MouseEvent('mousemove', {
-          clientX: touch.clientX,
-          clientY: touch.clientY
-        });
-        graffitiCanvas.dispatchEvent(mouseEvent);
-      }, { passive: false });
-
-      graffitiCanvas.addEventListener('touchend', (e) => {
-        const mouseEvent = new MouseEvent('mouseup', {});
-        window.dispatchEvent(mouseEvent);
-      });
+      }
 
       renderGraffitiWall();
       fetchGraffitiFromSupabase();
@@ -12000,10 +12022,9 @@ function initGraffitiWall() {
       }
     }
 
-    function pinGraffitiToWall() {
+    async function pinGraffitiToWall() {
       const authorInput = document.getElementById('graffitiAuthor');
       const noteInput = document.getElementById('graffitiNote');
-
       const author = authorInput ? authorInput.value.trim() : '';
       const note = noteInput ? noteInput.value.trim() : '';
 
@@ -12014,82 +12035,112 @@ function initGraffitiWall() {
 
       let drawingData = null;
       if (hasUserDrawn && graffitiCanvas) {
-        drawingData = graffitiCanvas.toDataURL('image/png');
+        try {
+          const webpData = graffitiCanvas.toDataURL('image/webp', 0.7);
+          drawingData = webpData.startsWith('data:image/webp')
+            ? webpData
+            : graffitiCanvas.toDataURL('image/png');
+        } catch (err) {
+          showToast('⚠️ Chưa đọc được nét vẽ. Bạn thử vẽ lại một lần nhé!');
+          return;
+        }
       }
-
-      const dateStr = formatGraffitiDate(new Date());
 
       const newEntry = {
         id: 'note_' + Date.now(),
         author: author || 'Một học sinh Hà Trung ẩn danh',
         note: note || 'Chúc Sóng Of HT và trường mình luôn luôn rực rỡ!',
-        date: dateStr,
+        date: formatGraffitiDate(new Date()),
         drawing: drawingData
       };
 
       const notes = getSavedGraffiti();
       notes.unshift(newEntry);
-      localStorage.setItem(STORAGE_KEY_GRAFFITI, JSON.stringify(notes));
 
-      // Reset form
-
-      if (authorInput) authorInput.value = '';
-
-      if (noteInput) noteInput.value = '';
-
-      clearGraffitiCanvas();
-
-
-
-      // Cập nhật điểm cống hiến (+50 điểm) và tăng số lượng kỷ niệm (+1)
-
-      let uNotes = parseInt(localStorage.getItem('song_of_ht_user_notes'), 10) || 0;
-
-      uNotes += 1;
-
-      localStorage.setItem('song_of_ht_user_notes', uNotes);
-
-
-
-      // Nếu người dùng có nhập tên tác giả và chưa từng lưu nickname BXH, tự động gán tên
-
-      if (author && !localStorage.getItem('song_of_ht_user_nickname')) {
-
-        localStorage.setItem('song_of_ht_user_nickname', author);
-
+      let localSaved = false;
+      try {
+        localStorage.setItem(STORAGE_KEY_GRAFFITI, JSON.stringify(notes));
+        localSaved = true;
+      } catch (err) {
+        console.warn('[Graffiti] Không lưu được trên thiết bị:', err);
       }
 
+      let client = null;
+      try { client = getSupabase(); } catch (err) {}
 
+      const finishSuccess = (includeLocalEntry) => {
+        if (authorInput) authorInput.value = '';
+        if (noteInput) noteInput.value = '';
+        clearGraffitiCanvas();
 
-      // Cập nhật real-time giao diện điểm cống hiến & Bảng Vàng Fan Cứng (+50 điểm)
+        try {
+          const userNotes = Number(localStorage.getItem('song_of_ht_user_notes')) || 0;
+          localStorage.setItem('song_of_ht_user_notes', String(userNotes + 1));
+        } catch (err) {}
+        try {
+          if (author && !localStorage.getItem('song_of_ht_user_nickname')) {
+            localStorage.setItem('song_of_ht_user_nickname', author);
+          }
+        } catch (err) {}
 
-      if (typeof updateLeaderboardLiveScore === 'function') updateLeaderboardLiveScore();
+        try {
+          if (typeof updateLeaderboardLiveScore === 'function') updateLeaderboardLiveScore();
+          if (typeof syncLiveScoreToLeaderboard === 'function') syncLiveScoreToLeaderboard();
+          if (typeof renderLeaderboard === 'function') renderLeaderboard();
+        } catch (err) {
+          console.warn('[BXH] Không cập nhật được điểm từ lời chúc:', err);
+        }
 
-      if (typeof syncLiveScoreToLeaderboard === 'function') syncLiveScoreToLeaderboard();
+        renderGraffitiWall(includeLocalEntry ? undefined : [newEntry, ...getSavedGraffiti()]);
+        if (typeof fireConfetti === 'function') fireConfetti('graffiti');
+      };
 
-      if (typeof renderLeaderboard === 'function') renderLeaderboard();
+      const insertOnServer = () => client.from(SUPABASE_TABLE_KY).insert([{
+        name: newEntry.author,
+        message: newEntry.note,
+        signature_data: newEntry.drawing
+      }]);
 
+      if (localSaved) {
+        // Lưu cục bộ trước để nút phản hồi ngay; việc đồng bộ máy chủ chạy nền.
+        finishSuccess(true);
+        if (!client) {
+          showToast('✅ Đã lưu chữ ký trên thiết bị này.');
+          return;
+        }
+        showToast('✅ Đã lưu chữ ký; đang đồng bộ lên máy chủ...');
+        insertOnServer().then(({ error }) => {
+          if (error) {
+            console.warn('[Supabase ky] Chưa đồng bộ được chữ ký:', error);
+            showToast('⚠️ Chữ ký vẫn lưu trên thiết bị; máy chủ chưa nhận được.');
+          } else {
+            showToast('☁️ Chữ ký đã đồng bộ lên máy chủ.');
+          }
+        }).catch((err) => {
+          console.warn('[Supabase ky] Ngoại lệ khi đồng bộ chữ ký:', err);
+          showToast('⚠️ Chữ ký vẫn lưu trên thiết bị; máy chủ chưa nhận được.');
+        });
+        return;
+      }
 
+      if (!client) {
+        showToast('⚠️ Chưa lưu được chữ ký. Bộ nhớ thiết bị có thể đã đầy.');
+        return;
+      }
 
-      renderGraffitiWall();
-
-      fireConfetti('graffiti');
-
-      showToast('🎉 +50 Điểm Cống Hiến! Chữ ký & lời chúc của bạn đã được ghim lên Tường Kỷ Niệm!');
-
-      // Lưu chữ ký vào bảng 'ky' trên Supabase (name, message, signature_data)
-      const client = getSupabase();
-      if (client) {
-        client.from(SUPABASE_TABLE_KY).insert([{
-          name: newEntry.author,
-          message: newEntry.note,
-          signature_data: newEntry.drawing
-        }]).then(({ error }) => {
-          if (error) console.warn('[Supabase ky] Lỗi khi insert vào bảng ky:', error);
-          else console.log('[Supabase ky] Đã lưu chữ ký thành công vào bảng ky!');
-        }).catch(err => console.warn('[Supabase ky] Ngoại lệ insert:', err));
+      try {
+        const { error } = await insertOnServer();
+        if (error) throw error;
+        finishSuccess(false);
+        showToast('☁️ Chữ ký đã gửi lên máy chủ.');
+      } catch (err) {
+        console.warn('[Supabase ky] Chưa lưu được chữ ký:', err);
+        showToast('⚠️ Chưa gửi được chữ ký. Hãy kiểm tra kết nối Supabase rồi thử lại.');
       }
     }
+
+    window.pinGraffitiToWall = pinGraffitiToWall;
+    window.clearGraffitiCanvas = clearGraffitiCanvas;
 
     function deleteGraffitiNote(id) {
       if (!confirm('Bạn có chắc muốn gỡ lời chúc này khỏi tường kỷ niệm?')) return;
