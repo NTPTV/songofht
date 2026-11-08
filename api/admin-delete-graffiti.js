@@ -37,19 +37,30 @@ module.exports = async function handler(req, res) {
   try {
     const endpoint = new URL('/rest/v1/ky', supabaseUrl);
     endpoint.searchParams.set('id', `eq.${id}`);
+    const headers = {
+      apikey: serviceRoleKey,
+      Prefer: 'return=representation'
+    };
+    // New sb_secret_* keys are API keys, not JWTs. Sending one as a Bearer
+    // token makes Supabase reject the request with Invalid JWT.
+    if (!serviceRoleKey.startsWith('sb_secret_')) {
+      headers.Authorization = `Bearer ${serviceRoleKey}`;
+    }
+
     const upstream = await fetch(endpoint, {
       method: 'DELETE',
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        Prefer: 'return=representation'
-      }
+      headers
     });
 
     const responseText = await upstream.text();
     if (!upstream.ok) {
       console.error('[admin-delete-graffiti] Supabase returned', upstream.status, responseText);
-      return res.status(502).json({ error: 'Supabase từ chối xóa. Kiểm tra cấu hình khóa máy chủ.' });
+      let detail = 'Supabase từ chối yêu cầu.';
+      try {
+        const errorBody = JSON.parse(responseText);
+        detail = errorBody.message || errorBody.hint || errorBody.code || detail;
+      } catch (err) {}
+      return res.status(502).json({ error: `Supabase HTTP ${upstream.status}: ${detail}` });
     }
 
     let deletedRows = [];
