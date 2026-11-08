@@ -1,12 +1,4 @@
-const { timingSafeEqual } = require('node:crypto');
-
-function secretsMatch(provided, expected) {
-  const providedBuffer = Buffer.from(String(provided || ''), 'utf8');
-  const expectedBuffer = Buffer.from(String(expected || ''), 'utf8');
-  return providedBuffer.length > 0 &&
-    providedBuffer.length === expectedBuffer.length &&
-    timingSafeEqual(providedBuffer, expectedBuffer);
-}
+const { verifyAdminSession } = require('../server/admin-session');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -17,17 +9,20 @@ module.exports = async function handler(req, res) {
   }
 
   const supabaseUrl = process.env.SUPABASE_URL || 'https://ycifixbmcfjixmmjyfpb.supabase.co';
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const adminDeleteSecret = process.env.ADMIN_DELETE_SECRET;
-  if (!supabaseUrl || !serviceRoleKey || !adminDeleteSecret) {
+  const serviceRoleKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const adminLoginSecret = process.env.ADMIN_LOGIN_SECRET;
+  if (!adminLoginSecret) {
     return res.status(503).json({
-      error: 'API xóa lưu bút chưa được cấu hình đủ biến môi trường trên Vercel.'
+      error: 'Chưa cấu hình ADMIN_LOGIN_SECRET trên Vercel.'
     });
   }
-
-  const providedSecret = req.headers['x-admin-delete-secret'];
-  if (!secretsMatch(providedSecret, adminDeleteSecret)) {
-    return res.status(401).json({ error: 'Mã xóa lưu bút không đúng.' });
+  if (!verifyAdminSession(req.headers.cookie, adminLoginSecret)) {
+    return res.status(401).json({ error: 'Phiên Admin hết hạn. Hãy đăng nhập lại.' });
+  }
+  if (!serviceRoleKey) {
+    return res.status(503).json({
+      error: 'Chưa cấu hình SUPABASE_SECRET_KEY trên Vercel.'
+    });
   }
 
   let body = req.body;

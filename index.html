@@ -1728,7 +1728,7 @@
               Mở Khóa
             </button>
           </div>
-          <div id="maintenanceAuthError" class="hidden text-[11px] text-rose-400 font-bold">⚠️ Mật khẩu không chính xác! (Mặc định: songofht2026)</div>
+          <div id="maintenanceAuthError" class="hidden text-[11px] text-rose-400 font-bold">⚠️ Không xác thực được Admin.</div>
         </div>
 
         <button type="button" onclick="promptAdminLoginFromMaintenance()" class="text-xs text-slate-400 hover:text-cyan transition-colors underline cursor-pointer">
@@ -5486,8 +5486,6 @@
 ];
     window.DEFAULT_PORTFOLIO_CATEGORIES = DEFAULT_PORTFOLIO_CATEGORIES;
 
-    // Mật khẩu ẩn quản trị
-    const SECRET_ADMIN_PASS = 'songofht2026';
 
     // Trạng thái Admin
     var isAdminActive = false;
@@ -6928,9 +6926,7 @@
       // 3. Kiểm tra nếu Admin đã đăng nhập trong phiên làm việc hiện tại (sessionStorage)
       // Mặc định luôn là false khi mới vào trang hoặc mở lại trình duyệt
       const isSessionAdmin = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(STORAGE_KEY_ADMIN) === 'true');
-      if (isSessionAdmin) {
-        enableAdminMode(false);
-      } else {
+      const clearAdminUiState = () => {
         isAdminActive = false;
         window.isAdminActive = false;
         if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY_ADMIN, 'false');
@@ -6943,6 +6939,16 @@
           el.removeAttribute('title');
           el.contentEditable = 'false';
         });
+      };
+      if (isSessionAdmin) {
+        fetch('/api/admin-session', { credentials: 'same-origin' })
+          .then(response => {
+            if (!response.ok) throw new Error('Phiên Admin không còn hợp lệ.');
+            enableAdminMode(false);
+          })
+          .catch(clearAdminUiState);
+      } else {
+        clearAdminUiState();
       }
 
       // 4. Render Portfolio và Members & Bảng Vàng Sinh Nhật
@@ -7964,10 +7970,24 @@
       }
     }
 
-    function handleAuthSubmit(e) {
+    async function authenticateAdminOnServer(password) {
+      const response = await fetch('/api/admin-session', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Không xác thực được Admin.');
+      return true;
+    }
+
+    async function handleAuthSubmit(e) {
       if (e) e.preventDefault();
       const pwd = document.getElementById('adminPasswordInput').value.trim();
-      if (pwd === SECRET_ADMIN_PASS) {
+      const errorEl = document.getElementById('adminAuthError');
+      try {
+        await authenticateAdminOnServer(pwd);
         try { sessionStorage.setItem(STORAGE_KEY_ADMIN, 'true'); } catch (err) {}
         try { localStorage.setItem(STORAGE_KEY_ADMIN, 'false'); } catch (err) {}
         closeAdminAuthModal();
@@ -7983,8 +8003,11 @@
           document.getElementById('adminQuickEditController')?.classList.remove('hidden');
           showToast('✅ Admin đã bật; một vài tiện ích phụ gặp lỗi khi tải.');
         }
-      } else {
-        document.getElementById('adminAuthError').classList.remove('hidden');
+      } catch (err) {
+        if (errorEl) {
+          errorEl.textContent = err.message || '❌ Không xác thực được Admin.';
+          errorEl.classList.remove('hidden');
+        }
       }
     }
 
@@ -8079,6 +8102,8 @@
         localStorage.removeItem(STORAGE_KEY_ADMIN);
         localStorage.setItem(STORAGE_KEY_ADMIN, 'false');
       }
+      fetch('/api/admin-session', { method: 'DELETE', credentials: 'same-origin' })
+        .catch(err => console.warn('[Admin] Không xóa được phiên máy chủ:', err));
 
       document.body.classList.remove('admin-mode-active');
       updateAdminVolumeControl();
@@ -11606,7 +11631,6 @@
     let hasUserDrawn = false;
     let currentGraffitiColor = '#00E5FF';
     let currentGraffitiBrushSize = 4;
-    let graffitiDeleteApiSecret = '';
     const DEFAULT_GRAFFITI_NOTES = [
       {
         id: 'note_1',
@@ -12237,23 +12261,19 @@ function initGraffitiWall() {
           return;
         }
 
-        if (!graffitiDeleteApiSecret) {
-          const enteredSecret = prompt('Nhập mã xóa lưu bút do quản trị viên thiết lập trên Vercel:');
-          if (!enteredSecret || !enteredSecret.trim()) return;
-          graffitiDeleteApiSecret = enteredSecret.trim();
-        }
-
         try {
           const response = await fetch('/api/admin-delete-graffiti', {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
-              'Content-Type': 'application/json',
-              'X-Admin-Delete-Secret': graffitiDeleteApiSecret
+              'Content-Type': 'application/json'
             },
             body: JSON.stringify({ id: String(cloudId) })
           });
           const result = await response.json().catch(() => ({}));
-          if (response.status === 401) graffitiDeleteApiSecret = '';
+          if (response.status === 401 && typeof handleAdminSafeLogout === 'function') {
+            handleAdminSafeLogout(true);
+          }
           if (!response.ok) throw new Error(result.error || 'API chưa cấu hình hoặc máy chủ từ chối xóa.');
 
           await fetchGraffitiFromSupabase();
@@ -13827,44 +13847,39 @@ function initGraffitiWall() {
       }
     }
 
-    function submitMaintenanceUnlock() {
+    async function submitMaintenanceUnlock() {
       const input = document.getElementById('maintenanceQuickPassInput');
       const pass = input ? input.value.trim() : '';
       const err = document.getElementById('maintenanceAuthError');
+      if (!pass) {
+        if (err) err.classList.remove('hidden');
+        if (input) input.focus();
+        return;
+      }
 
-      if (pass === SECRET_ADMIN_PASS || pass === 'songofht2026') {
+      try {
+        await authenticateAdminOnServer(pass);
         localStorage.setItem('song_of_ht_maintenance_mode', 'false');
         const chk = document.getElementById('chkMaintenanceEnable');
         if (chk) chk.checked = false;
-        const overlay = document.getElementById('maintenanceModeOverlay');
-        if (overlay) overlay.classList.add('hidden');
-
-        localStorage.setItem(STORAGE_KEY_ADMIN, 'true');
+        document.getElementById('maintenanceModeOverlay')?.classList.add('hidden');
+        try { sessionStorage.setItem(STORAGE_KEY_ADMIN, 'true'); } catch (storageError) {}
+        try { localStorage.setItem(STORAGE_KEY_ADMIN, 'false'); } catch (storageError) {}
         enableAdminMode(true);
         fireConfetti('admin');
-        if (typeof showToast === 'function') {
-          showToast('🎉 Mở khóa thành công! Chế độ bảo trì đã được tắt.');
+        if (typeof showToast === 'function') showToast('🎉 Đã đăng nhập Admin và tắt chế độ bảo trì.');
+      } catch (authError) {
+        if (err) {
+          err.textContent = authError.message || 'Không xác thực được Admin.';
+          err.classList.remove('hidden');
         }
-      } else {
-        if (err) err.classList.remove('hidden');
         if (input) input.focus();
       }
     }
 
     function emergencyUnlockMaintenance() {
-      localStorage.setItem('song_of_ht_maintenance_mode', 'false');
-      const chk = document.getElementById('chkMaintenanceEnable');
-      if (chk) chk.checked = false;
-      const overlay = document.getElementById('maintenanceModeOverlay');
-      if (overlay) overlay.classList.add('hidden');
-
-      sessionStorage.setItem(STORAGE_KEY_ADMIN, 'true');
-      localStorage.setItem(STORAGE_KEY_ADMIN, 'false');
-      enableAdminMode(true);
-      fireConfetti('admin');
-      if (typeof showToast === 'function') {
-        showToast('🚨 KHẨN CẤP: Đã mở khóa bảo trì và khôi phục quyền Quản trị viên!');
-      }
+      promptAdminLoginFromMaintenance();
+      if (typeof showToast === 'function') showToast('🔐 Nhập mật khẩu Admin để tiếp tục.');
     }
 
     // 13. Backup & Restore Data JSON
