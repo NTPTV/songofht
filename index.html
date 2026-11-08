@@ -598,15 +598,18 @@
       background-color: rgba(255, 255, 255, 0.08) !important;
     }
 
-    /* Carousel Track cho Humans of Sóng */
+    /* Carousel native horizontal scroll for mobile and desktop */
+    .carousel-container {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(0, 229, 255, 0.35) transparent;
+      -webkit-overflow-scrolling: touch;
+    }
     .carousel-track {
       display: flex;
+      width: max-content;
+      min-width: 100%;
       gap: 1.5rem;
-      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-      will-change: transform;
-    }
-
-    /* Modal Form Custom Scrollbar & Dropdown Options */
+    }    /* Modal Form Custom Scrollbar & Dropdown Options */
     .custom-scrollbar::-webkit-scrollbar {
       width: 6px;
     }
@@ -2040,7 +2043,7 @@
               <div class="relative flex-1 min-h-[220px] sm:min-h-[360px] lg:min-h-[460px] w-full flex flex-col justify-center banner-img-container">
                 <!-- Khung ảnh hoạt động Sóng Of HT -->
                 <div class="img-editable-wrap flex-1 w-full rounded-3xl overflow-hidden relative shadow-2xl border border-cyan-500/20 group bg-slate-950/60 flex items-center justify-center">
-                  <img src="assets/banner-song-of-ht.jpg" alt="Hoạt động Sóng Of HT" class="w-full h-auto sm:h-full object-contain sm:object-cover object-center rounded-3xl transition-transform duration-700 group-hover:scale-105 banner-responsive-img" data-editable-img="about_banner" onerror="this.src='assets/logo-song-of-ht.jpg'" />
+                  <img src="assets/banner-song-of-ht.jpg" alt="Hoạt động Sóng Of HT" class="w-full h-auto sm:h-full object-contain sm:object-cover object-center rounded-3xl transition-transform duration-700 group-hover:scale-105 banner-responsive-img" data-editable-img="about_banner" onerror="if (this.dataset.bannerFallback !== 'webp') { this.dataset.bannerFallback = 'webp'; this.src = 'assets/banner-song-of-ht.webp'; } else { this.onerror = null; this.src = 'assets/logo-song-of-ht.jpg'; }" />
                   <div class="img-change-badge rounded-3xl" onclick="triggerImageChange('about_banner', this, event)" title="Đổi ảnh hoạt động">
                     <span>📷 Đổi Ảnh Hoạt Động</span>
                   </div>
@@ -2810,7 +2813,7 @@
         </div>
 
         <!-- Carousel Container (Mobile hiển thị trọn vẹn 1 thẻ chính giữa, không lộ viền thẻ thứ 2; Desktop hiển thị 4 thẻ) -->
-        <div class="relative overflow-hidden py-6 max-w-[320px] md:max-w-none mx-auto snap-x snap-mandatory" id="carouselContainer">
+        <div class="relative overflow-x-auto overflow-y-hidden py-6 max-w-[320px] md:max-w-none mx-auto snap-x snap-mandatory overscroll-x-contain carousel-container" id="carouselContainer">
           <div class="carousel-track" id="membersTrack">
             <!-- Thẻ Polaroid được render tự động bằng JS -->
           </div>
@@ -3140,20 +3143,20 @@
             <div class="glass-deep rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl flex-1 flex flex-col justify-between">
               <div>
                 <!-- Header -->
-                <div class="flex items-center justify-between pb-4 border-b border-white/10 mb-6">
+                <div class="flex items-start sm:items-center justify-between gap-3 pb-4 border-b border-white/10 mb-6">
                   <div class="flex items-center gap-3">
-                    <span class="text-2xl p-2.5 rounded-2xl bg-amber-500/15 border border-amber-400/30 text-accent-gold">🥇</span>
+                    <span class="text-2xl p-2.5 rounded-2xl bg-amber-500/15 border border-amber-400/30 text-accent-gold shrink-0">🥇</span>
                     <div>
-                      <h3 class="text-lg font-black text-white" data-editable-id="community_leaderboard_title">Bảng Xếp Hạng Fan Cứng</h3>
+                      <h3 class="text-base sm:text-lg font-black text-white leading-tight break-words min-w-0" data-editable-id="community_leaderboard_title">Bảng Xếp Hạng Fan Cứng</h3>
                       <p class="text-xs text-slate-400" data-editable-id="community_leaderboard_desc">Thả tim (+5đ) • Viết lưu bút (+50đ) • Lướt sóng (x2đ)</p>
                     </div>
                   </div>
-                  <span class="px-2.5 py-1 rounded-full bg-cyan/15 text-cyan text-[11px] font-bold border border-cyan/30">Live Rank</span>
+                  <span class="shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full bg-cyan/15 text-cyan text-[11px] font-bold border border-cyan/30">Live Rank</span>
                 </div>
 
                 <!-- User Current Points Card -->
                 <div class="p-4 rounded-2xl bg-gradient-to-r from-cyan/15 via-blue-900/30 to-purple-900/20 border border-cyan-400/30 mb-6">
-                  <div class="flex items-center justify-between gap-4 mb-2">
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
                     <div>
                       <span class="text-[11px] text-cyan-200 font-semibold uppercase tracking-wider block">Điểm Cống Hiến Của Bạn</span>
                       <div class="flex items-baseline gap-1.5 mt-0.5">
@@ -3161,7 +3164,7 @@
                         <span class="text-xs text-slate-300 font-bold">điểm</span>
                       </div>
                     </div>
-                    <div class="text-right text-[11px] text-slate-300 space-y-0.5">
+                    <div class="grid grid-cols-3 sm:flex sm:flex-col gap-2 sm:gap-0.5 text-left sm:text-right text-[11px] text-slate-300 min-w-0">
                       <div>💖 Tim: <strong id="userStatsHearts" class="text-cyan">0</strong></div>
                       <div>📝 Kỷ niệm: <strong id="userStatsNotes" class="text-accent-gold">0</strong></div>
                       <div>🏄 Game: <strong id="userStatsSurf" class="text-emerald-400">0</strong></div>
@@ -3181,9 +3184,9 @@
                   </div>
 
                   <!-- Register Nickname Form (Chỉ hiện khi chưa ghi danh lần nào) -->
-                  <div id="leaderboardRegisterForm" class="pt-3 border-t border-white/10 flex items-center gap-2">
-                    <input type="text" id="leaderboardNicknameInput" placeholder="Nhập tên/lớp của bạn để ghi danh..." maxlength="24" class="flex-1 px-3 py-2 rounded-xl bg-white/10 border border-white/20 focus:border-cyan focus:outline-none text-xs text-white placeholder:text-slate-400 font-semibold" />
-                    <button type="button" onclick="registerToLeaderboard()" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-bold text-xs shadow-md shadow-orange-900/30 active:scale-95 transition-all whitespace-nowrap cursor-pointer">
+                  <div id="leaderboardRegisterForm" class="pt-3 border-t border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <input type="text" id="leaderboardNicknameInput" placeholder="Nhập tên/lớp của bạn để ghi danh..." maxlength="24" class="w-full min-w-0 sm:flex-1 px-3 py-2 rounded-xl bg-white/10 border border-white/20 focus:border-cyan focus:outline-none text-xs text-white placeholder:text-slate-400 font-semibold" />
+                    <button type="button" onclick="registerToLeaderboard()" class="w-full sm:w-auto shrink-0 justify-center px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-bold text-xs shadow-md shadow-orange-900/30 active:scale-95 transition-all whitespace-nowrap cursor-pointer">
                       Ghi Danh 🏆
                     </button>
                   </div>
@@ -6850,6 +6853,15 @@
 
 
     document.addEventListener('DOMContentLoaded', () => {
+      const runStartupSafely = (label, task) => {
+        try {
+          task();
+        } catch (error) {
+          console.error('[Startup] ' + label + ' failed:', error);
+        }
+      };
+      let membersRenderedAtStartup = false;
+      try {
       // Khởi động 5 tính năng độc lạ mới (ID Card, Leaderboard, Mailbox, Water Ripple)
       initWaterRippleTransition();
       checkMaintenanceModeOnLoad();
@@ -6937,7 +6949,8 @@
       renderCategoryFilterTabs();
       updateCategorySelectOptions();
       renderPortfolio();
-      renderMembers();
+      runStartupSafely('Danh sách thành viên', renderMembers);
+      membersRenderedAtStartup = !!document.querySelector('#membersTrack .polaroid-item');
       if (typeof renderBirthdayBoard === 'function') renderBirthdayBoard();
       if (typeof renderFooterQuickLinks === 'function') renderFooterQuickLinks();
       init3DTilt();
@@ -6945,7 +6958,7 @@
       // 5. Khởi động Carousel & Counter & Scroll reveal
       initCounters();
       initScrollReveal();
-      initCarouselControls();
+
       initMobileMenu();
 
 
@@ -6960,10 +6973,18 @@
       initHeartsCount();
       initBgmPlayer();
       initTickerConfig();
-      initGraffitiWall();
 
-      // 8. Khởi động Đồng hồ đếm ngược kỳ thi THPT
-      initExamCountdown();
+
+      } catch (error) {
+        console.error('[Startup] Một tính năng khởi tạo bị lỗi; các tính năng chính sẽ được thử riêng:', error);
+      } finally {
+        if (!membersRenderedAtStartup || !document.querySelector('#membersTrack .polaroid-item')) {
+          runStartupSafely('Danh sách thành viên', renderMembers);
+        }
+        runStartupSafely('Băng chuyền thành viên', initCarouselControls);
+        runStartupSafely('Bảng ký tên', initGraffitiWall);
+        runStartupSafely('Đếm ngược kỳ thi', initExamCountdown);
+      }
     });
 
     // -------------------------------------------------------------
@@ -7641,6 +7662,12 @@
           );
         }
 
+        if (currentEditingImgTarget === 'about_banner' && typeof syncSiteSettingToSupabase === 'function') {
+          syncSiteSettingToSupabase('custom_images', { about_banner: base64Data })
+            .then(synced => {
+              if (synced) console.info('[Supabase site_settings] Ảnh Về Sóng đã đồng bộ.');
+            });
+        }
         showToast('📷 Đã cập nhật ảnh thành công!');
       } catch (err) {
         console.error('Lỗi khi nén và lưu ảnh:', err);
@@ -7653,18 +7680,22 @@
     }
 
     function restoreCustomImages() {
-      const raw = localStorage.getItem(STORAGE_KEY_IMAGES);
-      if (!raw) return;
       try {
-        customImagesData = JSON.parse(raw);
+        const raw = localStorage.getItem(STORAGE_KEY_IMAGES);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+
+        customImagesData = parsed;
         Object.keys(customImagesData).forEach(key => {
-          const val = customImagesData[key];
+          const value = customImagesData[key];
+          if (typeof value !== 'string' || !value.trim() || /^(blob:|file:)/i.test(value)) return;
           document.querySelectorAll('img[data-editable-img="' + key + '"]').forEach(img => {
-            img.src = val;
+            img.src = value;
           });
         });
-      } catch (e) {
-        console.error('Lỗi phục hồi ảnh:', e);
+      } catch (error) {
+        console.error('Lỗi phục hồi ảnh:', error);
       }
     }
 
@@ -7877,7 +7908,7 @@
     // -------------------------------------------------------------
     function handleAdminTriggerClick() {
       if (isAdminActive) {
-        document.getElementById('adminActionBar').classList.remove('hidden');
+        document.getElementById('adminActionBar')?.classList.remove('hidden');
               // 5. Lưu bộ đếm lượt xem (nếu Admin có điều chỉnh)
       const inputViews = document.getElementById('admin_page_views_input');
       const checkViews = document.getElementById('admin_views_visible_checkbox');
@@ -7944,8 +7975,13 @@
           enableAdminMode(true);
           fireConfetti('admin');
         } catch (err) {
-          console.error('[Admin] Đã xác thực nhưng có lỗi khi dựng bảng quản trị:', err);
-          showToast('✅ Đã xác thực Admin. Một phần bảng quản trị cần tải lại trang.');
+          console.error('[Admin] Lỗi khi dựng một phần bảng quản trị:', err);
+          isAdminActive = true;
+          window.isAdminActive = true;
+          document.body.classList.add('admin-mode-active');
+          document.getElementById('adminActionBar')?.classList.remove('hidden');
+          document.getElementById('adminQuickEditController')?.classList.remove('hidden');
+          showToast('✅ Admin đã bật; một vài tiện ích phụ gặp lỗi khi tải.');
         }
       } else {
         document.getElementById('adminAuthError').classList.remove('hidden');
@@ -7957,17 +7993,33 @@
     window.handleAuthSubmit = handleAuthSubmit;
     window.enableAdminMode = enableAdminMode;
     function enableAdminMode(showWelcomeToast = true) {
-      if (typeof renderGraffitiWall === "function") renderGraffitiWall();
-      const adminExamBtn = document.getElementById('adminEditExamBtn'); if (adminExamBtn) adminExamBtn.classList.remove('hidden');
+      const safeAdminTask = (label, task) => {
+        try {
+          task();
+        } catch (error) {
+          console.error('[Admin] Không tải được ' + label + ':', error);
+        }
+      };
+
+      // Bật quyền trước để một tiện ích lỗi không thể chặn toàn bộ bảng quản trị.
       isAdminActive = true;
       window.isAdminActive = true;
       document.body.classList.add('admin-mode-active');
-      document.getElementById('adminQuickEditController')?.classList.remove('hidden');
-      updateAdminVolumeControl();
-      updateAdminTickerButton();
-      if (typeof updateViralAdminButtonsVisibility === 'function') updateViralAdminButtonsVisibility();
 
-      // Kích hoạt contenteditable trên TẤT CẢ các thành phần text & lắng nghe tự động lưu blur/input
+      [
+        'adminEditExamBtn',
+        'adminQuickEditController',
+        'adminActionBar',
+        'adminAddPostBtn',
+        'adminManageFilterTagsBtn',
+        'adminAddMemberBtn'
+      ].forEach(id => document.getElementById(id)?.classList.remove('hidden'));
+
+      const navBtn = document.getElementById('navAdminBtnText');
+      if (navBtn) navBtn.textContent = 'Admin (Đang Bật)';
+      const mobNavBtn = document.getElementById('mobileAdminBtnText');
+      if (mobNavBtn) mobNavBtn.textContent = 'Admin (Đang Bật)';
+
       document.querySelectorAll('[data-editable-id]').forEach(el => {
         el.contentEditable = 'true';
         el.setAttribute('contenteditable', 'true');
@@ -7978,41 +8030,24 @@
           el.addEventListener('input', () => debouncedSaveSingleInlineEdit(el));
           el.addEventListener('click', (e) => {
             if (isAdminActive) {
-              e.stopPropagation(); // Ngăn sự kiện click nổi bọt lên các khối thẻ cha (tránh mở popup hoặc nhảy trang)
-              if (el.tagName === 'A' || el.closest('a')) {
-                e.preventDefault(); // Ngăn trình duyệt nhảy link khi đang sửa chữ
-              }
+              e.stopPropagation();
+              if (el.tagName === 'A' || el.closest('a')) e.preventDefault();
             }
           });
-          el.addEventListener('keydown', (e) => {
-            // Đảm bảo các phím gõ chữ, Backspace, Delete, Mũi tên hoạt động thông suốt
-            e.stopPropagation();
-          });
+          el.addEventListener('keydown', e => e.stopPropagation());
         }
       });
 
-      // Hiển thị thanh công cụ nổi & nút thêm
-      document.getElementById('adminActionBar').classList.remove('hidden');
-      const addPostBtn = document.getElementById('adminAddPostBtn');
-      if (addPostBtn) addPostBtn.classList.remove('hidden');
-      const filterTagsBtn = document.getElementById('adminManageFilterTagsBtn');
-      if (filterTagsBtn) filterTagsBtn.classList.remove('hidden');
-      const addMemberBtn = document.getElementById('adminAddMemberBtn');
-      if (addMemberBtn) addMemberBtn.classList.remove('hidden');
-
-      // Đổi nhãn nút
-      const navBtn = document.getElementById('navAdminBtnText');
-      if (navBtn) navBtn.textContent = 'Admin (Đang Bật)';
-      const mobNavBtn = document.getElementById('mobileAdminBtnText');
-      if (mobNavBtn) mobNavBtn.textContent = 'Admin (Đang Bật)';
-
-      // Render lại danh sách để hiện nút Sửa/Xóa
-      renderPortfolio();
-      renderMembers();
-      if (typeof renderBirthdayBoard === 'function') renderBirthdayBoard();
-      renderLeaderboard();
-      init3DTilt();
-      if (typeof fetchSiteSettingsFromSupabase === 'function') fetchSiteSettingsFromSupabase();
+      safeAdminTask('điều khiển âm lượng', updateAdminVolumeControl);
+      safeAdminTask('ticker', updateAdminTickerButton);
+      safeAdminTask('nút quản trị media', updateViralAdminButtonsVisibility);
+      safeAdminTask('tường lưu bút', renderGraffitiWall);
+      safeAdminTask('sản phẩm truyền thông', renderPortfolio);
+      safeAdminTask('thành viên', renderMembers);
+      safeAdminTask('bảng sinh nhật', renderBirthdayBoard);
+      safeAdminTask('bảng xếp hạng', renderLeaderboard);
+      safeAdminTask('hiệu ứng thẻ', init3DTilt);
+      safeAdminTask('đồng bộ cài đặt', fetchSiteSettingsFromSupabase);
 
       if (showWelcomeToast) {
         showToast('Đăng nhập Quản trị viên thành công! Bạn có thể sửa chữ, đổi ảnh và quản lý bài viết.');
@@ -10594,85 +10629,44 @@
       const container = document.getElementById('carouselContainer');
       if (!prev || !next || !track || !container) return;
 
-      let currentIndex = 0;
+      const getStep = () => {
+        const firstCard = track.querySelector('.polaroid-item');
+        if (!firstCard) return 314;
+        const gap = parseFloat(window.getComputedStyle(track).gap) || 24;
+        return firstCard.getBoundingClientRect().width + gap;
+      };
+      const getMaxScroll = () => Math.max(0, container.scrollWidth - container.clientWidth);
+      const updateButtons = () => {
+        const maxScroll = getMaxScroll();
+        prev.disabled = container.scrollLeft <= 1;
+        next.disabled = container.scrollLeft >= maxScroll - 1;
+        prev.style.opacity = prev.disabled ? '0.45' : '1';
+        next.style.opacity = next.disabled ? '0.45' : '1';
+        prev.setAttribute('aria-disabled', String(prev.disabled));
+        next.setAttribute('aria-disabled', String(next.disabled));
+      };
+      const scrollByCard = (direction) => {
+        const target = Math.max(0, Math.min(getMaxScroll(), container.scrollLeft + direction * getStep()));
+        container.scrollTo({ left: target, behavior: 'smooth' });
+      };
 
-      function getStep() {
-        const cards = track.querySelectorAll('.polaroid-item');
-        if (cards.length === 0) return 344;
-        const cardWidth = cards[0].offsetWidth;
-        const style = window.getComputedStyle(track);
-        const gap = parseFloat(style.gap) || 24;
-        return cardWidth + gap;
+      prev.onclick = () => scrollByCard(-1);
+      next.onclick = () => scrollByCard(1);
+
+      if (!container._memberCarouselScrollBound) {
+        container._memberCarouselScrollBound = true;
+        container.addEventListener('scroll', updateButtons, { passive: true });
+      }
+      if (!window._memberCarouselResizeBound) {
+        window._memberCarouselResizeBound = true;
+        window.addEventListener('resize', updateButtons, { passive: true });
+      }
+      if ('MutationObserver' in window && !track._memberCarouselObserver) {
+        track._memberCarouselObserver = new MutationObserver(() => requestAnimationFrame(updateButtons));
+        track._memberCarouselObserver.observe(track, { childList: true });
       }
 
-      function updateCarousel() {
-        const cards = track.querySelectorAll('.polaroid-item');
-        const count = cards.length;
-        if (count === 0) return;
-        const isMobile = window.innerWidth < 768;
-        const step = getStep();
-
-        if (isMobile) {
-          currentIndex = Math.max(0, Math.min(currentIndex, count - 1));
-          const offset = currentIndex * step;
-          track.style.transform = `translateX(-${offset}px)`;
-        } else {
-          const maxOffset = Math.max(0, track.scrollWidth - container.clientWidth);
-          const maxIndex = Math.ceil(maxOffset / step);
-          currentIndex = Math.max(0, Math.min(currentIndex, maxIndex));
-          const offset = Math.min(currentIndex * step, maxOffset);
-          track.style.transform = `translateX(-${offset}px)`;
-        }
-      }
-
-      next.addEventListener('click', () => {
-        const cards = track.querySelectorAll('.polaroid-item');
-        const isMobile = window.innerWidth < 768;
-        const step = getStep();
-        const maxOffset = Math.max(0, track.scrollWidth - container.clientWidth);
-        const maxIndex = isMobile ? cards.length - 1 : Math.ceil(maxOffset / step);
-
-        if (currentIndex < maxIndex) {
-          currentIndex++;
-          updateCarousel();
-        } else if (isMobile && currentIndex === cards.length - 1) {
-          // Vòng lặp quay lại thẻ đầu tiên trên mobile
-          currentIndex = 0;
-          updateCarousel();
-        }
-      });
-
-      prev.addEventListener('click', () => {
-        if (currentIndex > 0) {
-          currentIndex--;
-          updateCarousel();
-        }
-      });
-
-      // Hỗ trợ vuốt cảm ứng (Swipe) mượt mà trên Mobile
-      let touchStartX = 0;
-      let touchEndX = 0;
-      container.addEventListener('touchstart', (e) => {
-        touchStartX = e.changedTouches[0].screenX;
-      }, { passive: true });
-
-      container.addEventListener('touchend', (e) => {
-        touchEndX = e.changedTouches[0].screenX;
-        const diff = touchStartX - touchEndX;
-        if (Math.abs(diff) > 40) {
-          if (diff > 0) {
-            next.click();
-          } else {
-            prev.click();
-          }
-        }
-      }, { passive: true });
-
-      window.addEventListener('resize', () => {
-        updateCarousel();
-      });
-
-      updateCarousel();
+      updateButtons();
     }
 
     // -------------------------------------------------------------
@@ -10937,7 +10931,7 @@
       }
 
       // 2. Nạp mốc thời gian mục tiêu mới nhất từ Storage
-      const hasCustomDate = !!localStorage.getItem(STORAGE_KEY_EXAM_DATE);
+
       const savedDateStr = localStorage.getItem(STORAGE_KEY_EXAM_DATE) || examTargetDateStr || '2026-06-25T07:30:00';
       examTargetDateStr = savedDateStr;
 
@@ -10945,12 +10939,14 @@
       let targetTime = targetObj.getTime();
       const now = Date.now();
 
-      // Nếu chưa có ngày tùy chỉnh do người dùng nhập mà ngày mặc định đã trôi qua theo giờ máy khách,
-      // tự động tịnh tiến sang kỳ thi năm sau để tránh giao diện bị kẹt 00
-      if (!hasCustomDate && targetTime <= now) {
+      // Dời mốc đã qua sang kỳ tiếp theo để đồng hồ không đứng ở 00.
+
+      while (targetTime <= now) {
         targetObj = new Date(targetObj.getFullYear() + 1, targetObj.getMonth(), targetObj.getDate(), 7, 30, 0);
         targetTime = targetObj.getTime();
       }
+
+
 
       const dEl = document.getElementById('exam-days') || document.getElementById('examDays');
       const hEl = document.getElementById('exam-hours') || document.getElementById('examHours');
@@ -11607,6 +11603,10 @@ function initGraffitiWall() {
       graffitiCanvas = document.getElementById('graffitiCanvas');
       if (!graffitiCanvas) return;
       graffitiCtx = graffitiCanvas.getContext('2d');
+      if (!graffitiCtx) {
+        console.error('[Graffiti] Canvas 2D không khả dụng.');
+        return;
+      }
 
       // Khởi tạo nền trong suốt
       graffitiCtx.lineCap = 'round';
@@ -11847,6 +11847,30 @@ function initGraffitiWall() {
           }
         }
 
+        const isPortableBanner = value => typeof value === 'string' &&
+          /^(data:image\/|https?:\/\/|\/|\.\/|assets\/)/i.test(value);
+        let localAboutBanner = null;
+        try {
+          const localImages = JSON.parse(localStorage.getItem(STORAGE_KEY_IMAGES) || '{}');
+          if (localImages && isPortableBanner(localImages.about_banner)) {
+            localAboutBanner = localImages.about_banner;
+          }
+        } catch (e) {}
+
+        const cloudCustomImages = await readSiteSettingFromSupabase(client, 'custom_images');
+        const cloudAboutBanner = cloudCustomImages && cloudCustomImages.about_banner;
+        if (isPortableBanner(cloudAboutBanner)) {
+          customImagesData = customImagesData && typeof customImagesData === 'object' ? customImagesData : {};
+          customImagesData.about_banner = cloudAboutBanner;
+          try { localStorage.setItem(STORAGE_KEY_IMAGES, JSON.stringify(customImagesData)); } catch (e) {}
+          document.querySelectorAll('img[data-editable-img="about_banner"]').forEach(img => {
+            img.src = cloudAboutBanner;
+          });
+        } else if (isAdminActive && localAboutBanner && !window._customBannerMigrationStarted) {
+          window._customBannerMigrationStarted = true;
+          const synced = await syncSiteSettingToSupabase('custom_images', { about_banner: localAboutBanner });
+          if (!synced) window._customBannerMigrationStarted = false;
+        }
         const cloudPosts = await readSiteSettingFromSupabase(client, 'portfolio_posts');
         if (Array.isArray(cloudPosts)) {
           localStorage.setItem(STORAGE_KEY_PORTFOLIO, JSON.stringify(cloudPosts));
@@ -12030,129 +12054,15 @@ function initGraffitiWall() {
     }
 
     function getSavedGraffiti() {
-      const raw = localStorage.getItem(STORAGE_KEY_GRAFFITI);
-      if (!raw) return DEFAULT_GRAFFITI_NOTES;
       try {
-        return JSON.parse(raw);
+        const raw = localStorage.getItem(STORAGE_KEY_GRAFFITI);
+        if (!raw) return DEFAULT_GRAFFITI_NOTES;
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed)
+          ? parsed.filter(note => note && typeof note === 'object')
+          : DEFAULT_GRAFFITI_NOTES;
       } catch (e) {
         return DEFAULT_GRAFFITI_NOTES;
-      }
-    }
-
-    async function pinGraffitiToWall() {
-      const authorInput = document.getElementById('graffitiAuthor');
-      const noteInput = document.getElementById('graffitiNote');
-      const author = authorInput ? authorInput.value.trim() : '';
-      const note = noteInput ? noteInput.value.trim() : '';
-
-      if (!author && !note && !hasUserDrawn) {
-        showToast('⚠️ Vui lòng nhập tên/lời chúc hoặc vẽ chữ ký lên bảng trước khi ghim!');
-        return;
-      }
-
-      let drawingData = null;
-      if (hasUserDrawn && graffitiCanvas) {
-        try {
-          const webpData = graffitiCanvas.toDataURL('image/webp', 0.7);
-          drawingData = webpData.startsWith('data:image/webp')
-            ? webpData
-            : graffitiCanvas.toDataURL('image/png');
-        } catch (err) {
-          showToast('⚠️ Chưa đọc được nét vẽ. Bạn thử vẽ lại một lần nhé!');
-          return;
-        }
-      }
-
-      const newEntry = {
-        id: 'note_' + Date.now(),
-        author: author || 'Một học sinh Hà Trung ẩn danh',
-        note: note || 'Chúc Sóng Of HT và trường mình luôn luôn rực rỡ!',
-        date: formatGraffitiDate(new Date()),
-        drawing: drawingData
-      };
-
-      const notes = getSavedGraffiti();
-      notes.unshift(newEntry);
-
-      let localSaved = false;
-      try {
-        localStorage.setItem(STORAGE_KEY_GRAFFITI, JSON.stringify(notes));
-        localSaved = true;
-      } catch (err) {
-        console.warn('[Graffiti] Không lưu được trên thiết bị:', err);
-      }
-
-      let client = null;
-      try { client = getSupabase(); } catch (err) {}
-
-      const finishSuccess = (includeLocalEntry) => {
-        if (authorInput) authorInput.value = '';
-        if (noteInput) noteInput.value = '';
-        clearGraffitiCanvas();
-
-        try {
-          const userNotes = Number(localStorage.getItem('song_of_ht_user_notes')) || 0;
-          localStorage.setItem('song_of_ht_user_notes', String(userNotes + 1));
-        } catch (err) {}
-        try {
-          if (author && !localStorage.getItem('song_of_ht_user_nickname')) {
-            localStorage.setItem('song_of_ht_user_nickname', author);
-          }
-        } catch (err) {}
-
-        try {
-          if (typeof updateLeaderboardLiveScore === 'function') updateLeaderboardLiveScore();
-          if (typeof syncLiveScoreToLeaderboard === 'function') syncLiveScoreToLeaderboard();
-          if (typeof renderLeaderboard === 'function') renderLeaderboard();
-        } catch (err) {
-          console.warn('[BXH] Không cập nhật được điểm từ lời chúc:', err);
-        }
-
-        renderGraffitiWall(includeLocalEntry ? undefined : [newEntry, ...getSavedGraffiti()]);
-        if (typeof fireConfetti === 'function') fireConfetti('graffiti');
-      };
-
-      const insertOnServer = () => client.from(SUPABASE_TABLE_KY).insert([{
-        name: newEntry.author,
-        message: newEntry.note,
-        signature_data: newEntry.drawing
-      }]);
-
-      if (localSaved) {
-        // Lưu cục bộ trước để nút phản hồi ngay; việc đồng bộ máy chủ chạy nền.
-        finishSuccess(true);
-        if (!client) {
-          showToast('✅ Đã lưu chữ ký trên thiết bị này.');
-          return;
-        }
-        showToast('✅ Đã lưu chữ ký; đang đồng bộ lên máy chủ...');
-        insertOnServer().then(({ error }) => {
-          if (error) {
-            console.warn('[Supabase ky] Chưa đồng bộ được chữ ký:', error);
-            showToast('⚠️ Chữ ký vẫn lưu trên thiết bị; máy chủ chưa nhận được.');
-          } else {
-            showToast('☁️ Chữ ký đã đồng bộ lên máy chủ.');
-          }
-        }).catch((err) => {
-          console.warn('[Supabase ky] Ngoại lệ khi đồng bộ chữ ký:', err);
-          showToast('⚠️ Chữ ký vẫn lưu trên thiết bị; máy chủ chưa nhận được.');
-        });
-        return;
-      }
-
-      if (!client) {
-        showToast('⚠️ Chưa lưu được chữ ký. Bộ nhớ thiết bị có thể đã đầy.');
-        return;
-      }
-
-      try {
-        const { error } = await insertOnServer();
-        if (error) throw error;
-        finishSuccess(false);
-        showToast('☁️ Chữ ký đã gửi lên máy chủ.');
-      } catch (err) {
-        console.warn('[Supabase ky] Chưa lưu được chữ ký:', err);
-        showToast('⚠️ Chưa gửi được chữ ký. Hãy kiểm tra kết nối Supabase rồi thử lại.');
       }
     }
 
