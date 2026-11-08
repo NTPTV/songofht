@@ -11599,12 +11599,36 @@
 
     window.handleSendHeart = handleSendHeart;
 
+    const STORAGE_KEY_GRAFFITI = 'song_of_ht_graffiti_v2';
     let graffitiCanvas = null;
     let graffitiCtx = null;
     let isDrawingGraffiti = false;
     let hasUserDrawn = false;
     let currentGraffitiColor = '#00E5FF';
     let currentGraffitiBrushSize = 4;
+    const DEFAULT_GRAFFITI_NOTES = [
+      {
+        id: 'note_1',
+        author: 'Ban Chủ Nhiệm Sóng Of HT',
+        note: 'Chào đón tất cả các bạn học sinh Hà Trung! Cùng chung tay lưu giữ thanh xuân rực rỡ nhất 💙',
+        date: '28/10/2026',
+        drawing: null
+      },
+      {
+        id: 'note_2',
+        author: 'Nguyễn Lê Bảo Ngọc - 12A1',
+        note: 'Ba năm cấp ba trôi qua nhanh như một giấc mơ, cảm ơn Sóng vì luôn bắt trọn những khoảnh khắc đẹp!',
+        date: '29/10/2026',
+        drawing: null
+      },
+      {
+        id: 'note_3',
+        author: 'Trần Minh Quân - 10A4',
+        note: 'Em vừa nộp đơn vào ban Kỹ Thuật, hy vọng sẽ được cầm máy tác nghiệp cùng các anh chị!',
+        date: '30/10/2026',
+        drawing: null
+      }
+    ];
 function initGraffitiWall() {
       graffitiCanvas = document.getElementById('graffitiCanvas');
       if (!graffitiCanvas) return;
@@ -12069,6 +12093,124 @@ function initGraffitiWall() {
           : DEFAULT_GRAFFITI_NOTES;
       } catch (e) {
         return DEFAULT_GRAFFITI_NOTES;
+      }
+    }
+
+    async function pinGraffitiToWall() {
+      const authorInput = document.getElementById('graffitiAuthor');
+      const noteInput = document.getElementById('graffitiNote');
+      const author = authorInput ? authorInput.value.trim() : '';
+      const note = noteInput ? noteInput.value.trim() : '';
+
+      if (!author && !note && !hasUserDrawn) {
+        showToast('⚠️ Vui lòng nhập tên/lời chúc hoặc vẽ chữ ký lên bảng trước khi ghim!');
+        return;
+      }
+
+      let drawingData = null;
+      if (hasUserDrawn && graffitiCanvas) {
+        try {
+          const webpData = graffitiCanvas.toDataURL('image/webp', 0.7);
+          drawingData = webpData.startsWith('data:image/webp')
+            ? webpData
+            : graffitiCanvas.toDataURL('image/png');
+        } catch (err) {
+          console.warn('[Graffiti] Không đọc được nét ký:', err);
+          showToast('⚠️ Chưa đọc được nét vẽ. Bạn thử vẽ lại một lần nhé!');
+          return;
+        }
+      }
+
+      const newEntry = {
+        id: 'note_' + Date.now(),
+        author: author || 'Một học sinh Hà Trung ẩn danh',
+        note: note || 'Chúc Sóng Of HT và trường mình luôn luôn rực rỡ!',
+        date: formatGraffitiDate(new Date()),
+        drawing: drawingData
+      };
+
+      const notes = getSavedGraffiti();
+      notes.unshift(newEntry);
+
+      let localSaved = false;
+      try {
+        localStorage.setItem(STORAGE_KEY_GRAFFITI, JSON.stringify(notes));
+        localSaved = true;
+      } catch (err) {
+        console.warn('[Graffiti] Không lưu được trên thiết bị:', err);
+      }
+
+      let client = null;
+      try { client = getSupabase(); } catch (err) {
+        console.warn('[Graffiti] Không khởi tạo được Supabase:', err);
+      }
+
+      const finishSuccess = (includeLocalEntry) => {
+        if (authorInput) authorInput.value = '';
+        if (noteInput) noteInput.value = '';
+        clearGraffitiCanvas();
+
+        try {
+          const userNotes = Number(localStorage.getItem('song_of_ht_user_notes')) || 0;
+          localStorage.setItem('song_of_ht_user_notes', String(userNotes + 1));
+          if (author && !localStorage.getItem('song_of_ht_user_nickname')) {
+            localStorage.setItem('song_of_ht_user_nickname', author);
+          }
+        } catch (err) {}
+
+        try {
+          if (typeof updateLeaderboardLiveScore === 'function') updateLeaderboardLiveScore();
+          if (typeof syncLiveScoreToLeaderboard === 'function') syncLiveScoreToLeaderboard();
+          if (typeof renderLeaderboard === 'function') renderLeaderboard();
+        } catch (err) {
+          console.warn('[BXH] Không cập nhật được điểm từ lời chúc:', err);
+        }
+
+        renderGraffitiWall(includeLocalEntry ? undefined : [newEntry, ...getSavedGraffiti()]);
+        if (typeof fireConfetti === 'function') fireConfetti('graffiti');
+      };
+
+      if (localSaved) {
+        // Hiện trên tường ngay; đồng bộ lên máy chủ chạy tiếp bên dưới.
+        finishSuccess(true);
+        if (!client) {
+          showToast('✅ Đã ghim trên thiết bị này; hiện chưa kết nối được máy chủ.');
+          return;
+        }
+
+        showToast('✅ Đã ghim lên tường; đang đồng bộ lên máy chủ...');
+        try {
+          const { error } = await client.from(SUPABASE_TABLE_KY).insert([{
+            name: newEntry.author,
+            message: newEntry.note,
+            signature_data: newEntry.drawing
+          }]);
+          if (error) throw error;
+          showToast('☁️ Chữ ký và lời chúc đã ghim, đồng bộ lên máy chủ.');
+        } catch (err) {
+          console.warn('[Supabase ky] Chưa đồng bộ được chữ ký:', err);
+          showToast('⚠️ Đã ghim trên thiết bị này nhưng chưa đồng bộ lên máy chủ.');
+        }
+        return;
+      }
+
+      if (!client) {
+        showToast('⚠️ Chưa lưu được chữ ký. Bộ nhớ thiết bị có thể đã đầy.');
+        return;
+      }
+
+      try {
+        const { error } = await client.from(SUPABASE_TABLE_KY).insert([{
+          name: newEntry.author,
+          message: newEntry.note,
+          signature_data: newEntry.drawing
+        }]);
+        if (error) throw error;
+        finishSuccess(false);
+        showToast('☁️ Chữ ký và lời chúc đã ghim lên tường.');
+      } catch (err) {
+        console.warn('[Supabase ky] Chưa lưu được chữ ký:', err);
+        showToast('⚠️ Chưa ghim được chữ ký. Hãy kiểm tra kết nối Supabase rồi thử lại.');
       }
     }
 
