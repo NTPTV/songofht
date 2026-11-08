@@ -11966,7 +11966,7 @@ function initGraffitiWall() {
           return;
         }
 
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           const cloudNotes = data.map((row, idx) => {
             let dateStr = formatGraffitiDate();
             if (row.created_at) {
@@ -11997,8 +11997,8 @@ function initGraffitiWall() {
       try {
         client
           .channel('realtime:ky')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: SUPABASE_TABLE_KY }, (payload) => {
-            console.log('[Supabase ky] Nhận chữ ký mới từ đám mây:', payload);
+          .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_KY }, (payload) => {
+            console.log('[Supabase ky] Tường lưu bút được cập nhật:', payload);
             fetchGraffitiFromSupabase();
           })
           .subscribe();
@@ -12186,6 +12186,7 @@ function initGraffitiWall() {
             signature_data: newEntry.drawing
           }]);
           if (error) throw error;
+          await fetchGraffitiFromSupabase();
           showToast('☁️ Chữ ký và lời chúc đã ghim, đồng bộ lên máy chủ.');
         } catch (err) {
           console.warn('[Supabase ky] Chưa đồng bộ được chữ ký:', err);
@@ -12207,6 +12208,7 @@ function initGraffitiWall() {
         }]);
         if (error) throw error;
         finishSuccess(false);
+        await fetchGraffitiFromSupabase();
         showToast('☁️ Chữ ký và lời chúc đã ghim lên tường.');
       } catch (err) {
         console.warn('[Supabase ky] Chưa lưu được chữ ký:', err);
@@ -12217,13 +12219,51 @@ function initGraffitiWall() {
     window.pinGraffitiToWall = pinGraffitiToWall;
     window.clearGraffitiCanvas = clearGraffitiCanvas;
 
-    function deleteGraffitiNote(id) {
+    async function deleteGraffitiNote(id) {
       if (!confirm('Bạn có chắc muốn gỡ lời chúc này khỏi tường kỷ niệm?')) return;
-      let notes = getSavedGraffiti();
-      notes = notes.filter(n => n.id !== id);
-      localStorage.setItem(STORAGE_KEY_GRAFFITI, JSON.stringify(notes));
-      renderGraffitiWall();
-      showToast('Đã gỡ lời chúc thành công!');
+      const savedNotes = getSavedGraffiti();
+      const targetNote = savedNotes.find(n => String(n.id) === String(id));
+      const remainingNotes = savedNotes.filter(n => String(n.id) !== String(id));
+
+      try {
+        localStorage.setItem(STORAGE_KEY_GRAFFITI, JSON.stringify(remainingNotes));
+      } catch (err) {
+        console.warn('[Graffiti] Không cập nhật được danh sách trên thiết bị:', err);
+      }
+      renderGraffitiWall(remainingNotes);
+      renderAdminModeration();
+
+      const cloudId = targetNote && (targetNote.supabaseId || (targetNote.isCloud ? targetNote.id : null));
+      if (cloudId == null) {
+        showToast('Đã gỡ lời nhắn khỏi thiết bị này.');
+        return;
+      }
+
+      const client = getSupabase();
+      if (!client) {
+        showToast('⚠️ Đã gỡ trên thiết bị này nhưng chưa kết nối được máy chủ.');
+        return;
+      }
+
+      try {
+        const { data: deletedRows, error } = await client
+          .from(SUPABASE_TABLE_KY)
+          .delete()
+          .eq('id', cloudId)
+          .select('id');
+        if (error) throw error;
+        if (!Array.isArray(deletedRows) || deletedRows.length === 0) {
+          throw new Error('Supabase did not delete a row; check the DELETE RLS policy for ky.');
+        }
+        await fetchGraffitiFromSupabase();
+        renderAdminModeration();
+        showToast('🗑️ Đã xóa lời nhắn khỏi tường kỷ niệm và máy chủ.');
+      } catch (err) {
+        console.warn('[Supabase ky] Không xóa được lời nhắn trên máy chủ:', err);
+        await fetchGraffitiFromSupabase();
+        renderAdminModeration();
+        showToast('⚠️ Máy chủ từ chối xóa lời nhắn. Kiểm tra quyền DELETE/RLS của bảng ky.');
+      }
     }
 
     function renderGraffitiWall(customNotes) {
@@ -13576,7 +13616,7 @@ function initGraffitiWall() {
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             <button onclick="approveGraffitiNote('${n.id}')" class="px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 font-bold">✓ Duyệt</button>
-            <button onclick="deleteGraffitiNote('${n.id}'); renderAdminModeration();" class="px-2.5 py-1 rounded bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 font-bold">🗑️ Xóa</button>
+            <button onclick="deleteGraffitiNote('${n.id}')" class="px-2.5 py-1 rounded bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 font-bold">🗑️ Xóa</button>
           </div>
         `;
         list.appendChild(row);
@@ -14887,6 +14927,36 @@ function initGraffitiWall() {
   }
 ];
 
+    function normalizeLeaderboardName(name) {
+      return String(name || '')
+        .normalize('NFC')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .toLocaleLowerCase('vi-VN');
+    }
+
+    function dedupeLeaderboardEntries(entries) {
+      const byName = new Map();
+      (Array.isArray(entries) ? entries : []).forEach(entry => {
+        const displayName = String(entry?.name || '').trim().replace(/\s+/g, ' ');
+        const key = normalizeLeaderboardName(displayName);
+        if (!key) return;
+
+        const score = Math.max(0, Number(entry.score) || 0);
+        const existing = byName.get(key);
+        if (!existing) {
+          byName.set(key, { ...entry, name: displayName, score });
+          return;
+        }
+
+        const keepName = existing.name;
+        if (score > (Number(existing.score) || 0)) {
+          byName.set(key, { ...existing, ...entry, name: keepName, score });
+        }
+      });
+      return Array.from(byName.values()).sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
+    }
+
     function calculateUserContributionScore() {
       const hearts = parseInt(localStorage.getItem('song_of_ht_user_hearts'), 10) || 0;
       const notes = parseInt(localStorage.getItem('song_of_ht_user_notes'), 10) || 0;
@@ -14913,11 +14983,11 @@ function initGraffitiWall() {
 
     function getSavedLeaderboard() {
       const raw = localStorage.getItem(STORAGE_KEY_LEADERBOARD);
-      if (!raw) return DEFAULT_LEADERBOARD_ENTRIES;
+      if (!raw) return dedupeLeaderboardEntries(DEFAULT_LEADERBOARD_ENTRIES);
       try {
-        return JSON.parse(raw);
+        return dedupeLeaderboardEntries(JSON.parse(raw));
       } catch (e) {
-        return DEFAULT_LEADERBOARD_ENTRIES;
+        return dedupeLeaderboardEntries(DEFAULT_LEADERBOARD_ENTRIES);
       }
     }
 
@@ -14954,16 +15024,19 @@ function initGraffitiWall() {
         if (Array.isArray(data) && data.length > 0) {
           const validRows = data.filter(row => String(row?.name || '').trim().toLowerCase() !== 'bạn (fan cứng ht)');
           if (validRows.length === 0) return;
-          const cloudEntries = validRows.map((row, idx) => {
+          const cloudEntries = dedupeLeaderboardEntries(validRows.map((row, idx) => ({
+            id: row.id || ('bxh_' + idx),
+            name: row.name || 'Học sinh Hà Trung',
+            score: Number(row.score) || 0,
+            isCloud: true
+          }))).map((entry, idx) => {
             let medal = '⭐';
             if (idx === 0) medal = '🥇';
             else if (idx === 1) medal = '🥈';
             else if (idx === 2) medal = '🥉';
 
             return {
-              id: row.id || ('bxh_' + idx),
-              name: row.name || 'Học sinh Hà Trung',
-              score: Number(row.score) || 0,
+              ...entry,
               badge: medal,
               title: idx < 3 ? '🏆 Thủ Lĩnh Sóng' : '🌊 Thành Viên Tích Cực',
               isCloud: true
@@ -15143,8 +15216,10 @@ function initGraffitiWall() {
       let entries = getSavedLeaderboard();
 
       // Check if already in list
-      const existingIdx = entries.findIndex(e => e.name.toLowerCase() === nickname.toLowerCase());
+      const nicknameKey = normalizeLeaderboardName(nickname);
+      const existingIdx = entries.findIndex(e => normalizeLeaderboardName(e.name) === nicknameKey);
       if (existingIdx !== -1) {
+        entries[existingIdx].name = nickname;
         entries[existingIdx].score = Math.max(entries[existingIdx].score, stats.total);
       } else {
         entries.push({
@@ -15156,7 +15231,7 @@ function initGraffitiWall() {
         });
       }
 
-      entries.sort((a, b) => b.score - a.score);
+      entries = dedupeLeaderboardEntries(entries);
       localStorage.setItem(STORAGE_KEY_LEADERBOARD, JSON.stringify(entries));
 
       renderLeaderboard();
@@ -15215,9 +15290,11 @@ function initGraffitiWall() {
       const stats = calculateUserContributionScore();
       let entries = getSavedLeaderboard();
 
-      const existingIdx = entries.findIndex(e => e.name.toLowerCase() === savedUserNick.toLowerCase());
+      const savedNickKey = normalizeLeaderboardName(savedUserNick);
+      const existingIdx = entries.findIndex(e => normalizeLeaderboardName(e.name) === savedNickKey);
       if (existingIdx !== -1) {
-        entries[existingIdx].score = stats.total;
+        entries[existingIdx].name = savedUserNick;
+        entries[existingIdx].score = Math.max(Number(entries[existingIdx].score) || 0, stats.total);
       } else {
         entries.push({
           id: 'user_' + Date.now(),
@@ -15229,7 +15306,7 @@ function initGraffitiWall() {
         });
       }
 
-      entries.sort((a, b) => b.score - a.score);
+      entries = dedupeLeaderboardEntries(entries);
       localStorage.setItem(STORAGE_KEY_LEADERBOARD, JSON.stringify(entries));
       if (typeof updateLeaderboardLiveScore === 'function') updateLeaderboardLiveScore();
       if (typeof renderLeaderboard === 'function') renderLeaderboard();
@@ -15243,17 +15320,36 @@ function initGraffitiWall() {
           const { data, error: lookupError } = await client
             .from(SUPABASE_TABLE_BXH)
             .select('id, name, score')
-            .eq('name', savedUserNick)
-            .limit(1);
+            .order('score', { ascending: false })
+            .limit(1000);
           if (lookupError) throw lookupError;
 
-          if (data && data.length > 0) {
-            if (stats.total > (Number(data[0].score) || 0)) {
+          const sameNameRows = (Array.isArray(data) ? data : [])
+            .filter(row => normalizeLeaderboardName(row.name) === savedNickKey);
+          if (sameNameRows.length > 0) {
+            const primaryRow = sameNameRows.reduce((best, row) =>
+              (Number(row.score) || 0) > (Number(best.score) || 0) ? row : best
+            );
+            const mergedScore = Math.max(stats.total, ...sameNameRows.map(row => Number(row.score) || 0));
+            if (mergedScore > (Number(primaryRow.score) || 0)) {
               const { error: updateError } = await client
                 .from(SUPABASE_TABLE_BXH)
-                .update({ score: stats.total })
-                .eq('id', data[0].id);
+                .update({ score: mergedScore, name: savedUserNick })
+                .eq('id', primaryRow.id);
               if (updateError) throw updateError;
+            }
+
+            const duplicateIds = sameNameRows
+              .filter(row => String(row.id) !== String(primaryRow.id))
+              .map(row => row.id);
+            if (duplicateIds.length > 0) {
+              const { error: duplicateDeleteError } = await client
+                .from(SUPABASE_TABLE_BXH)
+                .delete()
+                .in('id', duplicateIds);
+              if (duplicateDeleteError) {
+                console.warn('[Supabase bxh] Đã gộp điểm nhưng chưa xóa được các dòng trùng:', duplicateDeleteError);
+              }
             }
           } else {
             const { error: insertError } = await client
