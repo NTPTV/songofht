@@ -11599,6 +11599,12 @@
 
     window.handleSendHeart = handleSendHeart;
 
+    let graffitiCanvas = null;
+    let graffitiCtx = null;
+    let isDrawingGraffiti = false;
+    let hasUserDrawn = false;
+    let currentGraffitiColor = '#00E5FF';
+    let currentGraffitiBrushSize = 4;
 function initGraffitiWall() {
       graffitiCanvas = document.getElementById('graffitiCanvas');
       if (!graffitiCanvas) return;
