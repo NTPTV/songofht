@@ -10040,7 +10040,7 @@
       document.getElementById('editMemQuote').value = targetMem.quote || '';
 
       const preview = document.getElementById('editMemImagePreview');
-      const photo = (customImagesData['mem_img_' + targetMem.id]) || (targetMem.image && targetMem.image.trim() !== '' ? targetMem.image : 'assets/logo-song-of-ht.jpg');
+      const photo = getMemberPhotoSource(targetMem);
       if (preview) preview.src = photo;
 
       const urlInput = document.getElementById('editMemImageUrl');
@@ -10285,8 +10285,9 @@
         return;
       }
 
-      listEl.innerHTML = matchingMembers.map(item => {
-        const photo = (customImagesData['mem_img_' + item.id]) || (item.image && item.image.trim() !== '' ? item.image : 'assets/logo-song-of-ht.jpg');
+      listEl.innerHTML = matchingMembers.map((item, index) => {
+        const photo = getMemberPhotoSource(item, index);
+        const fallbackPhoto = getMemberFallbackImage(item, index);
         const genLabel = item.gen || 'Gen 1';
         const yearLabel = item.year || '2025-2026';
         const roles = (item.roles && Array.isArray(item.roles) && item.roles.length > 0) 
@@ -10318,7 +10319,7 @@
             <!-- Header Card: Avatar phóng to 80-88px & Badge Ngày Sinh -->
             <div class="flex items-start justify-between gap-3 mb-3.5">
               <div class="birthday-avatar-wrap">
-                <img src="${photo}" alt="${item.name}" class="birthday-avatar-img pointer-events-none" loading="lazy" decoding="async" fetchpriority="low" onerror="this.src='assets/logo-song-of-ht.jpg'" />
+                <img src="${photo}" alt="${item.name}" class="birthday-avatar-img pointer-events-none" loading="lazy" decoding="async" fetchpriority="low" onerror="this.onerror=null;this.src='${fallbackPhoto}'" />
                 ${item.isToday ? '<span class="absolute -top-2 -right-2 text-2xl drop-shadow-md pointer-events-none">👑</span>' : '<span class="absolute -bottom-1 -right-1 text-base pointer-events-none">🎈</span>'}
               </div>
 
