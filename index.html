@@ -6837,6 +6837,7 @@
         typeof fetchHeartsFromSupabase === 'function' ? fetchHeartsFromSupabase() : Promise.resolve()
       ]).then(() => {
         console.log('[Supabase] Đã tải đồng bộ song song 5 bảng thành công (viral_media, ky, bxh, site_settings, gop_y)!');
+        if (typeof syncLiveScoreToLeaderboard === 'function') syncLiveScoreToLeaderboard();
       }).catch(err => {
         console.warn('[Supabase] Lỗi khi tải song song các bảng:', err);
       });
@@ -9569,11 +9570,12 @@
           };
         });
 
-        safeSetLocalStorage(
+        const savedLocally = safeSetLocalStorage(
           STORAGE_KEY_MEMBERS,
           JSON.stringify(cleanMembers),
           '⚠️ Bộ nhớ trình duyệt đã đầy, không thể lưu thêm ảnh thành viên nặng. Vui lòng dùng link ảnh online thay vì tải tệp trực tiếp!'
         );
+        if (savedLocally) syncSiteSettingToSupabase('members', cleanMembers);
         renderMembers();
         if (typeof renderBirthdayBoard === 'function') renderBirthdayBoard();
       } catch (err) {
@@ -11766,6 +11768,15 @@ function initGraffitiWall() {
           renderPortfolio();
         } else if (isAdminActive) {
           await syncSiteSettingToSupabase('portfolio_categories', getPortfolioCategories());
+        }
+
+        const cloudMembers = await readSiteSettingFromSupabase(client, 'members');
+        if (Array.isArray(cloudMembers)) {
+          localStorage.setItem(STORAGE_KEY_MEMBERS, JSON.stringify(cloudMembers));
+          renderMembers();
+          if (typeof renderBirthdayBoard === 'function') renderBirthdayBoard();
+        } else if (isAdminActive) {
+          await syncSiteSettingToSupabase('members', getStoredMembers());
         }
       } catch (err) {
         console.warn('[Supabase site_settings] Ngoại lệ khi tải cài đặt:', err);
@@ -14982,6 +14993,7 @@ function initGraffitiWall() {
       localStorage.setItem(STORAGE_KEY_LEADERBOARD, JSON.stringify(entries));
 
       renderLeaderboard();
+      syncLiveScoreToLeaderboard();
 
       if (typeof fireConfetti === 'function') fireConfetti('leaderboard');
       if (typeof showToast === 'function') {
@@ -15061,15 +15073,34 @@ function initGraffitiWall() {
         const client = getSupabase();
         if (!client || !savedUserNick) return;
         try {
-          const { data } = await client.from(SUPABASE_TABLE_BXH).select('id, name, score').eq('name', savedUserNick).limit(1);
+          const { data, error: lookupError } = await client
+            .from(SUPABASE_TABLE_BXH)
+            .select('id, name, score')
+            .eq('name', savedUserNick)
+            .limit(1);
+          if (lookupError) throw lookupError;
+
           if (data && data.length > 0) {
-            if (stats.total > (data[0].score || 0)) {
-              await client.from(SUPABASE_TABLE_BXH).update({ score: stats.total }).eq('id', data[0].id);
+            if (stats.total > (Number(data[0].score) || 0)) {
+              const { error: updateError } = await client
+                .from(SUPABASE_TABLE_BXH)
+                .update({ score: stats.total })
+                .eq('id', data[0].id);
+              if (updateError) throw updateError;
             }
           } else {
-            await client.from(SUPABASE_TABLE_BXH).insert([{ name: savedUserNick, score: stats.total }]);
+            const { error: insertError } = await client
+              .from(SUPABASE_TABLE_BXH)
+              .insert([{ name: savedUserNick, score: stats.total }]);
+            if (insertError) throw insertError;
           }
-        } catch (e) {}
+          await fetchLeaderboardFromSupabase();
+        } catch (e) {
+          console.warn('[Supabase bxh] Không đồng bộ được tên/điểm BXH:', e);
+          if (typeof showToast === 'function') {
+            showToast('⚠️ BXH đang lưu trên thiết bị này nhưng chưa đồng bộ lên máy chủ. Kiểm tra schema/quyền ghi Supabase.');
+          }
+        }
       }, 1500);
     }
 
