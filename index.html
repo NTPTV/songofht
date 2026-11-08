@@ -13,7 +13,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png" />
 
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   
   <!-- =================================================================== -->
   <!-- [TIÊU ĐỀ TRANG & THẺ META SEO]                                      -->
@@ -1543,6 +1543,23 @@
         min-height: 36px;
       }
     }
+
+      /* Giảm độ trễ chạm trên điện thoại và ngăn double-tap phóng to nút. */
+      a,
+      button,
+      [role="button"],
+      input[type="button"],
+      input[type="submit"] {
+        touch-action: manipulation;
+      }
+
+      @media (max-width: 768px) {
+        input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+        textarea,
+        select {
+          font-size: 16px !important;
+        }
+      }
 
       /* Menu dropdown Khám Phá: Ẩn mặc định, chỉ hiển thị khi rê chuột hoặc click chủ động */
     .nav-kham-pha-dropdown {
@@ -3135,7 +3152,7 @@
                     <div>
                       <span class="text-[11px] text-cyan-200 font-semibold uppercase tracking-wider block">Điểm Cống Hiến Của Bạn</span>
                       <div class="flex items-baseline gap-1.5 mt-0.5">
-                        <span id="userLivePoints" class="text-3xl font-black text-cyan drop-shadow-[0_0_12px_rgba(0,229,255,0.6)]">150</span>
+                        <span id="userLivePoints" class="text-3xl font-black text-cyan drop-shadow-[0_0_12px_rgba(0,229,255,0.6)]">0</span>
                         <span class="text-xs text-slate-300 font-bold">điểm</span>
                       </div>
                     </div>
@@ -4647,12 +4664,31 @@
 
     (function hydrateMasterStorage() {
       const SYNC_VER_KEY = 'song_of_ht_synced_version';
-      const TARGET_VER = '2026-11-04_full_master_v3';
+      const PREVIOUS_VER = '2026-11-04_full_master_v3';
+      const TARGET_VER = '2026-11-08_mobile_privacy_v4';
+      const PRIVATE_PROGRESS_KEYS = new Set([
+        'song_of_ht_user_nickname',
+        'song_of_ht_user_surf',
+        'song_of_ht_user_notes',
+        'song_of_ht_user_hearts',
+        'song_of_ht_surf_highscore'
+      ]);
       if (localStorage.getItem(SYNC_VER_KEY) !== TARGET_VER) {
         try {
+          const previousVersion = localStorage.getItem(SYNC_VER_KEY);
+          // Gỡ đúng các giá trị cá nhân đã bị bản sao v3 chép nhầm vào mọi trình duyệt.
+          if (previousVersion === PREVIOUS_VER) {
+            PRIVATE_PROGRESS_KEYS.forEach((key) => {
+              if (localStorage.getItem(key) === window.MASTER_BACKUP_STORAGE[key]) {
+                localStorage.removeItem(key);
+              }
+            });
+          }
           const keys = Object.keys(window.MASTER_BACKUP_STORAGE);
           for (let i = 0; i < keys.length; i++) {
             const k = keys[i];
+            // Tiến độ game và điểm đóng góp thuộc riêng thiết bị/người dùng, không lấy từ dữ liệu mẫu.
+            if (PRIVATE_PROGRESS_KEYS.has(k)) continue;
             // Đảm bảo tuyệt đối không lưu trạng thái admin là true khi hydrate
             if (k === 'song_of_ht_admin_logged_v2') {
               try { localStorage.setItem(k, 'false'); } catch (e) {}
@@ -6170,7 +6206,7 @@
       }
 
       const meteorPool = ['⭐', '🐚', '✨', '💫', '🌊', '💖', '💎', '🌟', '🦀', '🐬', '🫧'];
-      const totalMeteors = 28;
+      const totalMeteors = window.innerWidth <= 768 ? 12 : 28;
 
       for (let i = 0; i < totalMeteors; i++) {
         setTimeout(() => {
@@ -9500,6 +9536,24 @@
       input.value = '';
     }
 
+    function getMemberFallbackImage(member, index = 0) {
+      const defaultMember = DEFAULT_MEMBERS.find(item => item.id === (member && member.id));
+      if (defaultMember && defaultMember.image) return defaultMember.image;
+      const imageNumber = String((Math.max(0, index) % 10) + 1).padStart(2, '0');
+      return 'assets/members/default-member-' + imageNumber + '.webp';
+    }
+
+    function isTransientMemberImage(source) {
+      return typeof source !== 'string' || /^(blob:|file:|filesystem:)/i.test(source.trim());
+    }
+
+    function getMemberPhotoSource(member, index = 0) {
+      const fallback = getMemberFallbackImage(member, index);
+      const override = customImagesData['mem_img_' + (member && member.id)];
+      const source = override || (member && member.image);
+      return isTransientMemberImage(source) ? fallback : source.trim();
+    }
+
     function getStoredMembers() {
       const raw = localStorage.getItem(STORAGE_KEY_MEMBERS);
       let list = [...DEFAULT_MEMBERS];
@@ -9513,7 +9567,7 @@
       }
 
       // Chuẩn hóa dữ liệu: đảm bảo luôn có gen, year, birthday, roles (dạng mảng)
-      return list.map(m => {
+      return list.map((m, index) => {
         let roles = [];
         if (Array.isArray(m.roles) && m.roles.length > 0) {
           roles = m.roles.filter(r => typeof r === 'string' && r.trim().length > 0);
@@ -9537,7 +9591,7 @@
           roles: roles,
           badge: roles[0] || m.dept || 'Thành Viên',
           quote: m.quote || 'Sóng Of HT — Bắt trọn thanh xuân!',
-          image: m.image || 'assets/logo-song-of-ht.jpg'
+          image: isTransientMemberImage(m.image) || !m.image ? getMemberFallbackImage(m, index) : m.image
         };
       });
     }
@@ -9591,8 +9645,9 @@
       if (!track) return;
       const members = getStoredMembers();
 
-      track.innerHTML = members.map(item => {
-        const photo = (customImagesData['mem_img_' + item.id]) || (item.image && item.image.trim() !== '' ? item.image : 'assets/logo-song-of-ht.jpg');
+      track.innerHTML = members.map((item, index) => {
+        const photo = getMemberPhotoSource(item, index);
+        const fallbackPhoto = getMemberFallbackImage(item, index);
         const roles = (item.roles && Array.isArray(item.roles) && item.roles.length > 0) 
           ? item.roles 
           : (item.badge ? [item.badge] : [item.dept || 'Thành Viên']);
@@ -9647,7 +9702,7 @@
 
             <!-- Ảnh chân dung kẹp ghim (Tỷ lệ 4:5 cố định, giảm lề đáy ôm sát) -->
             <div class="aspect-[4/5] w-full bg-slate-100 rounded-xl overflow-hidden mb-1.5 relative shadow-inner img-editable-wrap border border-slate-200/80 shrink-0">
-              <img src="${photo}" alt="${item.name}" class="w-full h-full object-cover pointer-events-none" loading="lazy" decoding="async" fetchpriority="low" data-editable-img="mem_img_${item.id}" onerror="this.src='assets/logo-song-of-ht.jpg'" />
+              <img src="${photo}" alt="${item.name}" class="w-full h-full object-cover pointer-events-none" loading="lazy" decoding="async" fetchpriority="low" data-editable-img="mem_img_${item.id}" onerror="this.onerror=null;this.src='${fallbackPhoto}'" />
               
               <div class="img-change-badge" onclick="triggerImageChange('mem_img_${item.id}', this, event)" title="Đổi ảnh đại diện thành viên">
                 <span>📷 Đổi Ảnh</span>
@@ -11263,6 +11318,34 @@
     let heartSupabaseRowId = null;
     let heartSyncTimer = null;
     let pendingHeartIncrements = 0;
+    let heartSyncInFlight = false;
+    let heartFetchPromise = null;
+    let heartInlineStorageTimer = null;
+    let liveScoreSyncTimer = null;
+    let lastHeartCelebrationAt = 0;
+    let heartSyncRetryCount = 0;
+
+    function scheduleHeartInlineSnapshot(count) {
+      if (heartInlineStorageTimer) clearTimeout(heartInlineStorageTimer);
+      heartInlineStorageTimer = setTimeout(() => {
+        try {
+          const inlineData = JSON.parse(localStorage.getItem(STORAGE_KEY_INLINE)) || {};
+          inlineData['heart_counter_display'] = count.toLocaleString('vi-VN');
+          localStorage.setItem(STORAGE_KEY_INLINE, JSON.stringify(inlineData));
+        } catch (err) {}
+      }, 300);
+    }
+
+    function scheduleLiveScoreSync() {
+      if (!localStorage.getItem('song_of_ht_user_nickname')) return;
+      if (liveScoreSyncTimer) clearTimeout(liveScoreSyncTimer);
+      liveScoreSyncTimer = setTimeout(() => {
+        liveScoreSyncTimer = null;
+        if (typeof window.syncLiveScoreToLeaderboard === 'function') {
+          window.syncLiveScoreToLeaderboard();
+        }
+      }, 800);
+    }
 
     async function fetchHeartsFromSupabase() {
       const client = getSupabase();
@@ -11273,34 +11356,41 @@
           .select('*')
           .limit(1);
 
-        if (error) {
-          console.warn('[Supabase tim] Lỗi khi tải lượt tim:', error);
-          return;
-        }
+        if (error) throw error;
 
         if (data && data.length > 0) {
           const row = data[0];
           heartSupabaseRowId = row.id;
-          const cloudCount = parseInt(row.count, 10);
-          if (!isNaN(cloudCount)) {
-            const localCount = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 0;
-            const finalCount = Math.max(cloudCount, localCount);
-            localStorage.setItem(STORAGE_KEY_HEARTS, finalCount);
+          const cloudCount = Number(row.count);
+          if (Number.isFinite(cloudCount)) {
+            // Supabase giữ tổng chung; chỉ cộng những lượt đang chờ gửi từ thiết bị này.
+            const finalCount = cloudCount + pendingHeartIncrements;
+            localStorage.setItem(STORAGE_KEY_HEARTS, String(finalCount));
             const display = document.getElementById('heartCountDisplay');
             if (display) display.textContent = finalCount.toLocaleString('vi-VN');
           }
         } else {
-          const currentLocal = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 1910;
-          const { data: inserted } = await client
+          const storedCount = localStorage.getItem(STORAGE_KEY_HEARTS);
+          const localCount = storedCount === null ? NaN : Number(storedCount);
+          const visibleCount = Number.isFinite(localCount) ? localCount : 1910;
+          // Trừ lượt đang chờ vì chúng sẽ được cộng khi batch được gửi.
+          const seedCount = Math.max(0, visibleCount - pendingHeartIncrements);
+          const { data: inserted, error: insertError } = await client
             .from(SUPABASE_TABLE_TIM)
-            .insert([{ count: currentLocal }])
+            .insert([{ count: seedCount }])
             .select();
+
+          if (insertError) throw insertError;
           if (inserted && inserted[0]) {
             heartSupabaseRowId = inserted[0].id;
+            const finalCount = Number(inserted[0].count) + pendingHeartIncrements;
+            localStorage.setItem(STORAGE_KEY_HEARTS, String(finalCount));
+            const display = document.getElementById('heartCountDisplay');
+            if (display) display.textContent = finalCount.toLocaleString('vi-VN');
           }
         }
       } catch (err) {
-        console.warn('[Supabase tim] Ngoại lệ khi tải tim:', err);
+        console.warn('[Supabase tim] Lỗi khi tải lượt tim:', err);
       }
     }
 
@@ -11311,14 +11401,12 @@
         client
           .channel('realtime:tim')
           .on('postgres_changes', { event: '*', schema: 'public', table: SUPABASE_TABLE_TIM }, (payload) => {
-            if (payload.new && !isNaN(payload.new.count)) {
-              const newCount = parseInt(payload.new.count, 10);
-              const currentLocal = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 0;
-              if (newCount > currentLocal) {
-                localStorage.setItem(STORAGE_KEY_HEARTS, newCount);
-                const display = document.getElementById('heartCountDisplay');
-                if (display) display.textContent = newCount.toLocaleString('vi-VN');
-              }
+            if (payload.new && Number.isFinite(Number(payload.new.count))) {
+              const newCount = Number(payload.new.count);
+              const finalCount = newCount + pendingHeartIncrements;
+              localStorage.setItem(STORAGE_KEY_HEARTS, String(finalCount));
+              const display = document.getElementById('heartCountDisplay');
+              if (display) display.textContent = finalCount.toLocaleString('vi-VN');
             }
           })
           .subscribe();
@@ -11327,195 +11415,164 @@
       }
     }
 
-    function scheduleHeartSyncToSupabase() {
+    function scheduleHeartSyncToSupabase(delay = 1200) {
       if (heartSyncTimer) clearTimeout(heartSyncTimer);
-      heartSyncTimer = setTimeout(flushHeartsToSupabase, 1200);
+      heartSyncTimer = setTimeout(flushHeartsToSupabase, delay);
     }
+
+    window.addEventListener('online', () => {
+      if (pendingHeartIncrements > 0) scheduleHeartSyncToSupabase(500);
+    });
 
     async function flushHeartsToSupabase() {
       if (pendingHeartIncrements <= 0) return;
-      const increments = pendingHeartIncrements;
-      pendingHeartIncrements = 0;
+      if (heartSyncInFlight) {
+        scheduleHeartSyncToSupabase(700);
+        return;
+      }
 
       const client = getSupabase();
       if (!client) return;
 
+      heartSyncInFlight = true;
+      let increments = 0;
       try {
+        // Chờ lần tải/khởi tạo đầu tiên để tránh tạo hai hàng tim cùng lúc.
+        if (!heartSupabaseRowId && heartFetchPromise) await heartFetchPromise;
+        increments = pendingHeartIncrements;
+        if (increments <= 0) return;
+        pendingHeartIncrements = 0;
+
         let currentCount;
         if (heartSupabaseRowId) {
-          const { data } = await client
+          const { data, error } = await client
             .from(SUPABASE_TABLE_TIM)
             .select('count')
             .eq('id', heartSupabaseRowId)
             .single();
-          if (data && !isNaN(data.count)) {
-            currentCount = parseInt(data.count, 10) + increments;
-          }
-        }
+          if (error) throw error;
+          if (!data || !Number.isFinite(Number(data.count))) throw new Error('Không đọc được tổng tim trên máy chủ.');
 
-        if (isNaN(currentCount)) {
-          const localVal = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10) || 1910;
-          currentCount = localVal;
-        }
-
-        if (heartSupabaseRowId) {
-          await client
+          currentCount = Number(data.count) + increments;
+          const { error: updateError } = await client
             .from(SUPABASE_TABLE_TIM)
             .update({ count: currentCount })
             .eq('id', heartSupabaseRowId);
+          if (updateError) throw updateError;
         } else {
-          const { data: inserted } = await client
+          // Tình huống hiếm khi tải ban đầu thất bại: tìm hàng hiện có trước khi tạo hàng mới.
+          const { data, error } = await client
             .from(SUPABASE_TABLE_TIM)
-            .insert([{ count: currentCount }])
-            .select();
-          if (inserted && inserted[0]) {
-            heartSupabaseRowId = inserted[0].id;
+            .select('id, count')
+            .limit(1);
+          if (error) throw error;
+
+          if (data && data.length > 0) {
+            heartSupabaseRowId = data[0].id;
+            currentCount = Number(data[0].count) + increments;
+            const { error: updateError } = await client
+              .from(SUPABASE_TABLE_TIM)
+              .update({ count: currentCount })
+              .eq('id', heartSupabaseRowId);
+            if (updateError) throw updateError;
+          } else {
+            // Để hàm tải khởi tạo tạo hàng nền, không ghi đúp lượt đang chờ.
+            pendingHeartIncrements += increments;
+            increments = 0;
+            heartSyncRetryCount = Math.min(heartSyncRetryCount + 1, 5);
+            heartFetchPromise = fetchHeartsFromSupabase();
+            await heartFetchPromise;
+            return;
           }
         }
-        console.log(`[Supabase tim] Đã đồng bộ batch +${increments} tim thành công! Tổng: ${currentCount}`);
+
+        heartSyncRetryCount = 0;
+        const finalCount = currentCount + pendingHeartIncrements;
+        localStorage.setItem(STORAGE_KEY_HEARTS, String(finalCount));
+        const display = document.getElementById('heartCountDisplay');
+        if (display) display.textContent = finalCount.toLocaleString('vi-VN');
       } catch (err) {
-        console.warn('[Supabase tim] Ngoại lệ khi flush tim:', err);
+        pendingHeartIncrements += increments;
+        heartSyncRetryCount = Math.min(heartSyncRetryCount + 1, 5);
+        console.warn('[Supabase tim] Chưa đồng bộ được batch tim; sẽ thử lại:', err);
+      } finally {
+        heartSyncInFlight = false;
+        if (pendingHeartIncrements > 0 && navigator.onLine) {
+          const retryDelay = Math.min(1000 * Math.pow(2, heartSyncRetryCount), 30000);
+          scheduleHeartSyncToSupabase(retryDelay);
+        }
       }
     }
 
     function initHeartsCount() {
       const display = document.getElementById('heartCountDisplay');
       if (!display) return;
-      let count = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10);
-      if (isNaN(count) || count <= 0) {
+      const storedCount = localStorage.getItem(STORAGE_KEY_HEARTS);
+      let count = storedCount === null ? NaN : Number(storedCount);
+      if (!Number.isFinite(count) || count < 0) {
         count = 1910;
-        localStorage.setItem(STORAGE_KEY_HEARTS, count);
+        localStorage.setItem(STORAGE_KEY_HEARTS, String(count));
       }
       display.textContent = count.toLocaleString('vi-VN');
 
-      fetchHeartsFromSupabase();
+      heartFetchPromise = fetchHeartsFromSupabase();
       initHeartsRealtime();
     }
     window.initHeartsCount = initHeartsCount;
-
-    let heartClickTracker = [];
 
     let userHeartClickCount = 0;
 
     function handleSendHeart(e) {
       const now = Date.now();
-      heartClickTracker.push(now);
-      heartClickTracker = heartClickTracker.filter(t => now - t <= 4000);
       userHeartClickCount += 1;
 
-      // Kích hoạt bão sao băng & vỏ sò rơi:
-      // - Mỗi mốc 5 lần thả tim (Click milestone)
-      // - Hoặc khi spam dồn dập (>= 4 clicks trong 4 giây)
-      if (userHeartClickCount % 5 === 0 || heartClickTracker.length >= 4) {
-        heartClickTracker = [];
-        triggerMeteorRain();
-      }
-
       const display = document.getElementById('heartCountDisplay');
-      let current = parseInt(localStorage.getItem(STORAGE_KEY_HEARTS), 10);
-      if (isNaN(current) || current <= 0) {
-        current = 1910;
-      }
+      const storedCount = localStorage.getItem(STORAGE_KEY_HEARTS);
+      let current = storedCount === null ? NaN : Number(storedCount);
+      if (!Number.isFinite(current) || current < 0) current = 1910;
       current += 1;
-      // Ghi nhận trực tiếp và vĩnh viễn vào kho dữ liệu (Database / LocalStorage)
-      localStorage.setItem(STORAGE_KEY_HEARTS, current);
+      localStorage.setItem(STORAGE_KEY_HEARTS, String(current));
 
-      // Đồng bộ ngay lập tức vào STORAGE_KEY_INLINE để loại bỏ mọi nguy cơ bị CMS inline snapshot ghi đè
-      try {
-        const inlineData = JSON.parse(localStorage.getItem(STORAGE_KEY_INLINE)) || {};
-        inlineData['heart_counter_display'] = current.toLocaleString('vi-VN');
-        localStorage.setItem(STORAGE_KEY_INLINE, JSON.stringify(inlineData));
-      } catch (err) {}
-
-      // Track user personal heart clicks for leaderboard
-      let uHearts = parseInt(localStorage.getItem('song_of_ht_user_hearts'), 10) || 0;
-      localStorage.setItem('song_of_ht_user_hearts', uHearts + 1);
+      // Việc ghi snapshot và cập nhật BXH được gộp lại sau khi người dùng ngừng bấm.
+      scheduleHeartInlineSnapshot(current);
+      const userHearts = Number(localStorage.getItem('song_of_ht_user_hearts')) || 0;
+      localStorage.setItem('song_of_ht_user_hearts', String(userHearts + 1));
       if (typeof updateLeaderboardLiveScore === 'function') updateLeaderboardLiveScore();
-      if (typeof syncLiveScoreToLeaderboard === 'function') syncLiveScoreToLeaderboard();
+      scheduleLiveScoreSync();
 
-      if (display) {
-        display.textContent = current.toLocaleString('vi-VN');
-      }
+      if (display) display.textContent = current.toLocaleString('vi-VN');
 
-      // Tự động đồng bộ số tim lên bảng 'tim' trên Supabase (có debounce tránh quá tải)
       pendingHeartIncrements += 1;
       scheduleHeartSyncToSupabase();
 
-      // Tạo các hạt tim bay bổng
-      const btn = e.currentTarget || document.getElementById('sendHeartBtn');
-      const rect = btn.getBoundingClientRect();
-      const emojis = ['💖', '✨', '🌊', '💕', '🔥', '🌸', '🐚', '⭐'];
-
-      for (let i = 0; i < 6; i++) {
-        const particle = document.createElement('span');
-        particle.className = 'floating-heart-particle text-xl sm:text-2xl';
-        particle.textContent = emojis[Math.floor(Math.random() * emojis.length)];
-
-        const offsetX = (Math.random() - 0.5) * rect.width;
-        const startX = rect.left + rect.width / 2 + offsetX;
-        const startY = rect.top + window.scrollY;
-
-        particle.style.left = `${startX}px`;
-        particle.style.top = `${startY}px`;
-
-        document.body.appendChild(particle);
-
-        setTimeout(() => {
-          particle.remove();
-        }, 1300);
+      // Hiệu ứng nhẹ trên điện thoại; bão sao chỉ xuất hiện thỉnh thoảng.
+      const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const btn = (e && e.currentTarget) || document.getElementById('sendHeartBtn');
+      if (!reducedMotion && btn && document.visibilityState === 'visible') {
+        const rect = btn.getBoundingClientRect();
+        const emojis = ['💖', '✨', '🌊', '💕', '🔥', '🌸', '🐚', '⭐'];
+        const particleCount = window.innerWidth <= 768 ? 2 : 4;
+        for (let i = 0; i < particleCount; i++) {
+          const particle = document.createElement('span');
+          particle.className = 'floating-heart-particle text-xl sm:text-2xl';
+          particle.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+          particle.style.left = String(rect.left + rect.width / 2 + (Math.random() - 0.5) * rect.width) + 'px';
+          particle.style.top = String(rect.top + window.scrollY) + 'px';
+          document.body.appendChild(particle);
+          setTimeout(() => particle.remove(), 1300);
+        }
       }
 
-      // Thả nhẹ 1-2 vỏ sò hoặc sao băng rơi ngay trên màn hình để tạo cảm giác biển cả sống động
-      for (let s = 0; s < 2; s++) {
-        const shell = document.createElement('span');
-        shell.className = 'meteor-particle text-xl sm:text-2xl';
-        shell.textContent = s === 0 ? '🐚' : '⭐';
-        shell.style.left = `${Math.random() * (window.innerWidth - 60) + 30}px`;
-        shell.style.top = '-40px';
-        shell.style.animationDuration = '1.6s';
-        document.body.appendChild(shell);
-        setTimeout(() => shell.remove(), 1800);
+      if (userHeartClickCount % 10 === 0 && now - lastHeartCelebrationAt >= 8000) {
+        lastHeartCelebrationAt = now;
+        if (!reducedMotion) {
+          triggerMeteorRain();
+          fireConfetti('heart');
+        }
       }
-
-      fireConfetti('heart');
     }
 
-    // =============================================================
-    // ENGINE: TƯỜNG KÝ TÊN LƯU BÚT ĐIỆN TỬ (DIGITAL GRAFFITI WALL)
-    // =============================================================
-    const STORAGE_KEY_GRAFFITI = 'song_of_ht_graffiti_v2';
-    let graffitiCanvas = null;
-    let graffitiCtx = null;
-    let isDrawingGraffiti = false;
-    let currentGraffitiColor = '#00E5FF';
-    let currentGraffitiBrushSize = 4;
-    let hasUserDrawn = false;
-
-    const DEFAULT_GRAFFITI_NOTES = [
-      {
-        id: 'note_1',
-        author: 'Ban Chủ Nhiệm Sóng Of HT',
-        note: 'Chào đón tất cả các bạn học sinh Hà Trung! Cùng chung tay lưu giữ thanh xuân rực rỡ nhất 💙',
-        date: '28/10/2026',
-        drawing: null
-      },
-      {
-        id: 'note_2',
-        author: 'Nguyễn Lê Bảo Ngọc - 12A1',
-        note: 'Ba năm cấp ba trôi qua nhanh như một giấc mơ, cảm ơn Sóng vì luôn bắt trọn những khoảnh khắc đẹp!',
-        date: '29/10/2026',
-        drawing: null
-      },
-      {
-        id: 'note_3',
-        author: 'Trần Minh Quân - 10A4',
-        note: 'Em vừa nộp đơn vào ban Kỹ Thuật, hy vọng sẽ được cầm máy tác nghiệp cùng các anh chị!',
-        date: '30/10/2026',
-        drawing: null
-      }
-    ];
-
-        window.handleSendHeart = handleSendHeart;
+    window.handleSendHeart = handleSendHeart;
 
 function initGraffitiWall() {
       graffitiCanvas = document.getElementById('graffitiCanvas');
@@ -14692,56 +14749,23 @@ function initGraffitiWall() {
       const notes = parseInt(localStorage.getItem('song_of_ht_user_notes'), 10) || 0;
       const surfHigh = parseInt(localStorage.getItem('song_of_ht_surf_highscore'), 10) || 0;
       const userSurf = parseInt(localStorage.getItem('song_of_ht_user_surf'), 10) || 0;
-      const basePoints = 150;
+      const basePoints = localStorage.getItem('song_of_ht_user_nickname') ? 150 : 0;
       // Cộng dồn toàn bộ điểm cống hiến từ lượt chơi game tích lũy userSurf kết hợp kỷ lục surfHigh
       const total = basePoints + (hearts * 5) + (notes * 50) + userSurf + (surfHigh * 2);
       return { total, hearts, notes, surfScore: Math.max(surfHigh, userSurf) };
     }
 
     function updateLeaderboardLiveScore() {
-
       const stats = calculateUserContributionScore();
-
       const pointsEl = document.getElementById('userLivePoints');
-
       const heartsEl = document.getElementById('userStatsHearts');
-
       const notesEl = document.getElementById('userStatsNotes');
-
       const surfEl = document.getElementById('userStatsSurf');
 
-
-
-      if (pointsEl) {
-
-        pointsEl.textContent = stats.total.toLocaleString('vi-VN');
-
-        pointsEl.classList.remove('animate-pulse');
-
-        void pointsEl.offsetWidth;
-
-        pointsEl.classList.add('animate-pulse');
-
-      }
-
+      if (pointsEl) pointsEl.textContent = stats.total.toLocaleString('vi-VN');
       if (heartsEl) heartsEl.textContent = stats.hearts;
-
-      if (notesEl) {
-
-        notesEl.textContent = stats.notes;
-
-        notesEl.classList.remove('animate-bounce');
-
-        void notesEl.offsetWidth;
-
-        notesEl.classList.add('animate-bounce');
-
-        setTimeout(() => notesEl.classList.remove('animate-bounce'), 1000);
-
-      }
-
+      if (notesEl) notesEl.textContent = stats.notes;
       if (surfEl) surfEl.textContent = stats.surfScore;
-
     }
 
     function getSavedLeaderboard() {
@@ -15543,7 +15567,22 @@ function initGraffitiWall() {
   <!-- =================================================================== -->
   <script>
     // Hàm tạo hiệu ứng cuộn mượt thủ công (Bulletproof Smooth Scroll)
+    let activeSmoothScrollFrame = null;
+
     function customSmoothScrollTo(targetPosition, duration = 800) {
+      if (activeSmoothScrollFrame !== null) {
+        window.cancelAnimationFrame(activeSmoothScrollFrame);
+      }
+      const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const mobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+      if (reducedMotion) duration = 0;
+      else if (mobile) duration = Math.min(duration, 450);
+      if (duration <= 0) {
+        window.scrollTo(0, targetPosition);
+        activeSmoothScrollFrame = null;
+        return;
+      }
+
       const startPosition = window.scrollY;
       const distance = targetPosition - startPosition;
       let startTime = null;
@@ -15561,12 +15600,13 @@ function initGraffitiWall() {
         window.scrollTo(0, startPosition + distance * ease);
 
         if (timeElapsed < duration) {
-          window.requestAnimationFrame(animationStep);
+          activeSmoothScrollFrame = window.requestAnimationFrame(animationStep);
         } else {
           window.scrollTo(0, targetPosition);
+          activeSmoothScrollFrame = null;
         }
       }
-      window.requestAnimationFrame(animationStep);
+      activeSmoothScrollFrame = window.requestAnimationFrame(animationStep);
     }
 
     // Áp dụng cho nút Ứng Tuyển
