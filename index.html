@@ -11606,6 +11606,7 @@
     let hasUserDrawn = false;
     let currentGraffitiColor = '#00E5FF';
     let currentGraffitiBrushSize = 4;
+    let graffitiDeleteApiSecret = '';
     const DEFAULT_GRAFFITI_NOTES = [
       {
         id: 'note_1',
@@ -12223,6 +12224,48 @@ function initGraffitiWall() {
       if (!confirm('Bạn có chắc muốn gỡ lời chúc này khỏi tường kỷ niệm?')) return;
       const savedNotes = getSavedGraffiti();
       const targetNote = savedNotes.find(n => String(n.id) === String(id));
+      if (!targetNote) {
+        renderGraffitiWall(savedNotes);
+        renderAdminModeration();
+        return;
+      }
+
+      const cloudId = targetNote.supabaseId || (targetNote.isCloud ? targetNote.id : null);
+      if (cloudId != null) {
+        if (!isAdminActive) {
+          showToast('⚠️ Chỉ quản trị viên mới có thể xóa lời nhắn trên máy chủ.');
+          return;
+        }
+
+        if (!graffitiDeleteApiSecret) {
+          const enteredSecret = prompt('Nhập mã xóa lưu bút do quản trị viên thiết lập trên Vercel:');
+          if (!enteredSecret || !enteredSecret.trim()) return;
+          graffitiDeleteApiSecret = enteredSecret.trim();
+        }
+
+        try {
+          const response = await fetch('/api/admin-delete-graffiti', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Admin-Delete-Secret': graffitiDeleteApiSecret
+            },
+            body: JSON.stringify({ id: String(cloudId) })
+          });
+          const result = await response.json().catch(() => ({}));
+          if (response.status === 401) graffitiDeleteApiSecret = '';
+          if (!response.ok) throw new Error(result.error || 'API chưa cấu hình hoặc máy chủ từ chối xóa.');
+
+          await fetchGraffitiFromSupabase();
+          renderAdminModeration();
+          showToast('🗑️ Đã xóa lời nhắn khỏi tường kỷ niệm và máy chủ.');
+        } catch (err) {
+          console.warn('[Graffiti API] Không xóa được lời nhắn:', err);
+          showToast(`⚠️ Chưa xóa được trên máy chủ: ${err.message || 'hãy kiểm tra cấu hình API Vercel.'}`);
+        }
+        return;
+      }
+
       const remainingNotes = savedNotes.filter(n => String(n.id) !== String(id));
 
       try {
@@ -12232,38 +12275,7 @@ function initGraffitiWall() {
       }
       renderGraffitiWall(remainingNotes);
       renderAdminModeration();
-
-      const cloudId = targetNote && (targetNote.supabaseId || (targetNote.isCloud ? targetNote.id : null));
-      if (cloudId == null) {
-        showToast('Đã gỡ lời nhắn khỏi thiết bị này.');
-        return;
-      }
-
-      const client = getSupabase();
-      if (!client) {
-        showToast('⚠️ Đã gỡ trên thiết bị này nhưng chưa kết nối được máy chủ.');
-        return;
-      }
-
-      try {
-        const { data: deletedRows, error } = await client
-          .from(SUPABASE_TABLE_KY)
-          .delete()
-          .eq('id', cloudId)
-          .select('id');
-        if (error) throw error;
-        if (!Array.isArray(deletedRows) || deletedRows.length === 0) {
-          throw new Error('Supabase did not delete a row; check the DELETE RLS policy for ky.');
-        }
-        await fetchGraffitiFromSupabase();
-        renderAdminModeration();
-        showToast('🗑️ Đã xóa lời nhắn khỏi tường kỷ niệm và máy chủ.');
-      } catch (err) {
-        console.warn('[Supabase ky] Không xóa được lời nhắn trên máy chủ:', err);
-        await fetchGraffitiFromSupabase();
-        renderAdminModeration();
-        showToast('⚠️ Máy chủ từ chối xóa lời nhắn. Kiểm tra quyền DELETE/RLS của bảng ky.');
-      }
+      showToast('Đã gỡ lời nhắn khỏi thiết bị này.');
     }
 
     function renderGraffitiWall(customNotes) {
