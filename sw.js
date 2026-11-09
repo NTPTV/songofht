@@ -3,7 +3,7 @@
 // THPT Hà Trung • Phú Vang, Thành Phố Huế
 // ===================================================================
 
-const CACHE_NAME = 'song-of-ht-cache-v12';
+const CACHE_NAME = 'song-of-ht-cache-v13';
 
 // Danh sách tài nguyên cốt lõi cần precache khi cài đặt
 const PRECACHE_ASSETS = [
@@ -76,9 +76,13 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
 
-  // TUYỆT ĐỐI KHÔNG can thiệp vào các API call của Supabase hoặc kết nối Realtime WebSocket
+  // TUYỆT ĐỐI KHÔNG can thiệp vào các API call của Supabase, CDN Facebook hoặc kết nối Realtime WebSocket
   if (
     url.hostname.includes('supabase.co') ||
+    url.hostname.includes('fbcdn.net') ||
+    url.hostname.includes('facebook.com') ||
+    url.hostname.includes('fbsbx.com') ||
+    url.hostname.includes('weserv.nl') ||
     url.pathname.includes('/rest/v1') ||
     url.pathname.includes('/realtime') ||
     url.protocol === 'ws:' ||

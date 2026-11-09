@@ -13,7 +13,9 @@
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png" />
 
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <!-- Chống chặn Hotlink cho toàn bộ ảnh CDN Facebook & bên thứ 3 -->
+  <meta name="referrer" content="no-referrer" />
   
   <!-- =================================================================== -->
   <!-- [TIÊU ĐỀ TRANG & THẺ META SEO]                                      -->
@@ -27,6 +29,38 @@
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Bộ xử lý ảnh CDN Facebook & bên thứ 3 chống 403 Forbidden qua Image Proxy & Referrer-Policy -->
+  <script>
+    function handleImgLoadError(img, fallbackSrc) {
+      if (!img) return;
+      const currentSrc = (img.src || img.getAttribute('src') || '').trim();
+      const defaultFallback = fallbackSrc || 'assets/logo-song-of-ht.jpg';
+
+      // 1. Nếu là link Facebook CDN (fbcdn.net, facebook.com, fbsbx.com) và chưa từng thử qua proxy:
+      if (
+        !img.dataset.proxyTried &&
+        (currentSrc.includes('fbcdn.net') || currentSrc.includes('facebook.com') || currentSrc.includes('fbsbx.com'))
+      ) {
+        img.dataset.proxyTried = '1';
+        img.referrerPolicy = 'no-referrer';
+        // Sử dụng proxy hình ảnh Cloudflare / Weserv miễn phí, xóa bỏ referer và phục vụ ảnh 100%
+        img.src = 'https://images.weserv.nl/?url=' + encodeURIComponent(currentSrc);
+        return;
+      }
+
+      // 2. Đã thử proxy hoặc link không hợp lệ -> fallback về ảnh mặc định an toàn
+      img.onerror = null;
+      img.src = defaultFallback;
+    }
+    window.handleImgLoadError = handleImgLoadError;
+
+    function normalizeMediaImageUrl(url) {
+      if (!url || typeof url !== 'string') return '';
+      return url.trim();
+    }
+    window.normalizeMediaImageUrl = normalizeMediaImageUrl;
+  </script>
 
   <!-- Typography: Plus Jakarta Sans (Nội dung) & Outfit (Tiêu đề sắc nét) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -88,15 +122,27 @@
 
   <style>
     /* =================================================================== */
-    /* NỀN LIỀN MẠCH ĐẠI DƯƠNG SÂU & HỌA TIẾT SÓNG VECTOR                  */
+    /* PWA SAFE AREA & NỀN LIỀN MẠCH ĐẠI DƯƠNG SÂU                         */
     /* =================================================================== */
+    :root {
+      --sat: env(safe-area-inset-top, 0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+      --sal: env(safe-area-inset-left, 0px);
+      --sar: env(safe-area-inset-right, 0px);
+    }
+
     html {
       scroll-behavior: smooth;
+      scroll-padding-top: calc(5rem + env(safe-area-inset-top, 0px));
+      background-color: #0b132b;
+      min-height: 100%;
     }
     body {
       overflow-x: hidden;
       width: 100%;
       max-width: 100vw;
+      background-color: #0b132b;
+      touch-action: manipulation;
     }
     body {
       background: linear-gradient(180deg, #040D1A 0%, #0A192F 22%, #062C3D 50%, #0A192F 78%, #040D1A 100%);
@@ -105,6 +151,39 @@
       font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
       overflow-x: hidden;
       min-height: 100vh;
+    }
+
+    /* Đệm an toàn chuẩn PWA cho Header: Tránh bị tai thỏ / Dynamic Island che mất Logo & Nút bấm */
+    header, #mainHeader {
+      padding-top: env(safe-area-inset-top, 0px) !important;
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+      background-color: #0b132b !important;
+    }
+
+    /* Đệm an toàn cho thanh phát nhạc nổi phía dưới */
+    #bgmPlayerContainer {
+      bottom: max(1.25rem, calc(env(safe-area-inset-bottom, 0px) + 0.75rem)) !important;
+      left: max(1.25rem, calc(env(safe-area-inset-left, 0px) + 0.75rem)) !important;
+    }
+
+    /* Đệm an toàn cho toàn bộ Modal Popups */
+    .admin-modal-backdrop,
+    #statModalOverlay,
+    #adminMegaControlModal,
+    #adminAuthModal,
+    #adminSuggestionsModal,
+    #editLinksModal,
+    #editPortfolioModal,
+    #editTickerModal,
+    #addMemberModal,
+    #addPortfolioModal,
+    #viewCounterModal,
+    #surfGameModal {
+      padding-top: max(1rem, env(safe-area-inset-top, 0px)) !important;
+      padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px)) !important;
+      padding-left: max(0.75rem, env(safe-area-inset-left, 0px)) !important;
+      padding-right: max(0.75rem, env(safe-area-inset-right, 0px)) !important;
     }
 
     @keyframes waveFloat {
@@ -1773,7 +1852,7 @@
     <!-- =================================================================== -->
     <!-- 1. NAVBAR CHÍNH: TỐI ƯU RESPONSIVE & MỞ RỘNG TOÀN DIỆN               -->
     <!-- =================================================================== -->
-    <header class="sticky top-0 z-50 bg-[#0b132b]/95 backdrop-blur-xl border-b border-sky-500/20">
+    <header id="mainHeader" class="sticky top-0 z-50 bg-[#0b132b]/95 backdrop-blur-xl border-b border-sky-500/20" style="padding-top: env(safe-area-inset-top, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px);">
       <div class="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10 xl:px-16 flex items-center justify-between lg:grid lg:grid-cols-[max-content_1fr_max-content] h-14 sm:h-16 lg:h-20 gap-3 sm:gap-4 lg:gap-6">
           
         <!-- Cột 1: Logo & Tên CLB (Bảo đảm không bị bóp méo, luôn 1 dòng chuẩn chỉ) -->
@@ -2685,7 +2764,7 @@
 
                 <!-- Thumbnail Top 1 -->
                 <div class="rounded-2xl overflow-hidden mb-6 relative aspect-video bg-ocean-900 border border-white/10 group-hover:border-cyan/40 transition-colors">
-                  <img src="assets/banner-song-of-ht.jpg" alt="Aftermovie Hội Trại 26/3" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" loading="lazy" decoding="async" fetchpriority="low" onerror="this.src='assets/logo-song-of-ht.jpg'" />
+                  <img src="assets/banner-song-of-ht.jpg" alt="Aftermovie Hội Trại 26/3" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="handleImgLoadError(this, 'assets/logo-song-of-ht.jpg')" />
                   <div class="absolute inset-0 bg-gradient-to-t from-ocean-950 via-ocean-950/20 to-transparent"></div>
                   <div class="absolute bottom-4 left-4 right-4 flex items-center justify-between">
                     <span class="px-3 py-1 rounded-lg bg-black/60 backdrop-blur text-xs font-bold text-cyan border border-cyan/30">
@@ -3771,7 +3850,7 @@
         <div>
           <label class="block text-xs font-bold text-foam mb-1">Ảnh Bìa Bài Viết (Tải từ máy tính hoặc dán URL)</label>
           <div class="flex items-center gap-3">
-            <img id="editPostImagePreview" src="" alt="Preview" class="w-14 h-14 object-cover rounded-xl border border-cyan/40 shrink-0"  loading="lazy" />
+            <img id="editPostImagePreview" src="" alt="Preview" class="w-14 h-14 object-cover rounded-xl border border-cyan/40 shrink-0" loading="lazy" referrerpolicy="no-referrer" onerror="handleImgLoadError(this, 'assets/logo-song-of-ht.jpg')" />
             <div class="flex-1 space-y-2">
               <input type="file" id="editPostImageFile" accept="image/*" onchange="previewEditPostImage(this)" class="w-full text-xs text-slate-300 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:bg-cyan/20 file:text-cyan file:font-semibold hover:file:bg-cyan/30" />
               <input type="text" id="editPostImageUrl" placeholder="Hoặc dán URL ảnh tại đây..." class="w-full px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-white" />
@@ -3889,7 +3968,7 @@
           <div class="flex flex-col sm:flex-row items-center gap-3">
             <!-- Thumbnail Box Preview -->
             <div class="w-full sm:w-36 h-24 rounded-xl overflow-hidden bg-black/50 border border-cyan/30 shrink-0 relative flex items-center justify-center">
-              <img id="viralThumbnailPreview" src="assets/banner-song-of-ht.jpg" alt="Preview" class="w-full h-full object-cover" onerror="this.src='assets/logo-song-of-ht.jpg'" />
+              <img id="viralThumbnailPreview" src="assets/banner-song-of-ht.jpg" alt="Preview" class="w-full h-full object-cover" referrerpolicy="no-referrer" onerror="handleImgLoadError(this, 'assets/logo-song-of-ht.jpg')" />
             </div>
 
             <!-- Upload Controls -->
@@ -4389,7 +4468,7 @@
         <div>
           <label class="block text-xs font-bold text-foam mb-1">Ảnh Chân Dung (Tải ảnh mới hoặc giữ nguyên)</label>
           <div class="flex items-center gap-3">
-            <img id="editMemImagePreview" src="" alt="Preview" class="w-12 h-14 object-cover rounded-xl border border-cyan/40 shrink-0 bg-slate-900"  loading="lazy" />
+            <img id="editMemImagePreview" src="" alt="Preview" class="w-12 h-14 object-cover rounded-xl border border-cyan/40 shrink-0 bg-slate-900" loading="lazy" referrerpolicy="no-referrer" onerror="handleImgLoadError(this, 'assets/logo-song-of-ht.jpg')" />
             <div class="flex-1 space-y-1.5">
               <input type="file" id="editMemImageFile" accept="image/*" onchange="previewEditMemberImage(this)" class="w-full text-xs text-slate-300 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:bg-cyan/20 file:text-cyan file:font-semibold hover:file:bg-cyan/30" />
               <input type="text" id="editMemImageUrl" placeholder="Hoặc dán URL ảnh trực tiếp..." class="w-full px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-white" />
@@ -8469,7 +8548,7 @@
           <div class="p-3 sm:p-3.5 rounded-2xl ${isHidden ? 'bg-amber-950/20 border-amber-500/30' : 'bg-white/[0.04] border-white/10'} border hover:border-cyan/40 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div class="flex items-center gap-3 min-w-0 flex-1">
               <div class="w-16 h-12 rounded-xl overflow-hidden bg-ocean-950 border border-white/10 shrink-0 relative">
-                <img src="${thumb}" alt="${item.title}" class="w-full h-full object-cover" onerror="this.src='assets/logo-song-of-ht.jpg'" />
+                <img src="${thumb}" alt="${item.title}" class="w-full h-full object-cover" referrerpolicy="no-referrer" onerror="handleImgLoadError(this, 'assets/logo-song-of-ht.jpg')" />
                 ${isHidden ? `<div class="absolute inset-0 bg-black/60 flex items-center justify-center text-xs">👁️‍🗨️</div>` : ''}
               </div>
               <div class="min-w-0 flex-1">
@@ -8771,8 +8850,8 @@
             ${adminButtons}
             <div>
               <div class="portfolio-media-frame w-full overflow-hidden relative img-editable-wrap" style="height: ${imgHeight}; background-color: #030d1a;">
-                ${isContain ? `<img src="${currentThumb}" alt="" class="absolute inset-0 w-full h-full object-cover blur-md opacity-25 scale-110 pointer-events-none" aria-hidden="true" loading="lazy" decoding="async" fetchpriority="low" onerror="this.src='assets/logo-song-of-ht.jpg'" />` : ''}
-                <img src="${currentThumb}" alt="${item.title}" class="portfolio-thumb-main w-full h-full group-hover:scale-105 transition-transform duration-500" style="object-fit: ${imgFit} !important; object-position: ${imgPos} !important; transform: scale(${imgScale});" loading="lazy" decoding="async" fetchpriority="low" data-editable-img="post_img_${item.id}" onerror="this.src='assets/logo-song-of-ht.jpg'" />
+                ${isContain ? `<img src="${currentThumb}" alt="" class="absolute inset-0 w-full h-full object-cover blur-md opacity-25 scale-110 pointer-events-none" aria-hidden="true" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="handleImgLoadError(this, 'assets/logo-song-of-ht.jpg')" />` : ''}
+                <img src="${currentThumb}" alt="${item.title}" class="portfolio-thumb-main w-full h-full group-hover:scale-105 transition-transform duration-500" style="object-fit: ${imgFit} !important; object-position: ${imgPos} !important; transform: scale(${imgScale});" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" data-editable-img="post_img_${item.id}" onerror="handleImgLoadError(this, 'assets/logo-song-of-ht.jpg')" />
                 ${adminOverlay}
 
                 <div class="absolute bottom-2 left-2 z-20 flex flex-wrap items-center gap-1.5 pointer-events-none">
@@ -8969,7 +9048,7 @@
             image = 'assets/logo-song-of-ht.jpg';
           }
         } else if (imgUrlVal) {
-          image = imgUrlVal;
+          image = normalizeMediaImageUrl(imgUrlVal);
         }
 
         // Nới lỏng Validation: Tự động điền giá trị hợp lý nếu người dùng bỏ trống
@@ -9113,7 +9192,7 @@
             console.error('Lỗi khi nén ảnh cập nhật bài viết:', imgErr);
           }
         } else if (urlInput) {
-          post.image = urlInput;
+          post.image = normalizeMediaImageUrl(urlInput);
         }
 
         saveStoredPortfolio(posts);
@@ -9775,7 +9854,7 @@
 
             <!-- Ảnh chân dung kẹp ghim (Tỷ lệ 4:5 cố định, giảm lề đáy ôm sát) -->
             <div class="aspect-[4/5] w-full bg-slate-100 rounded-xl overflow-hidden mb-1.5 relative shadow-inner img-editable-wrap border border-slate-200/80 shrink-0">
-              <img src="${photo}" alt="${item.name}" class="w-full h-full object-cover pointer-events-none" loading="lazy" decoding="async" fetchpriority="low" data-editable-img="mem_img_${item.id}" onerror="this.onerror=null;this.src='${fallbackPhoto}'" />
+              <img src="${photo}" alt="${item.name}" class="w-full h-full object-cover pointer-events-none" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" data-editable-img="mem_img_${item.id}" onerror="handleImgLoadError(this, '${fallbackPhoto}')" />
               
               <div class="img-change-badge" onclick="triggerImageChange('mem_img_${item.id}', this, event)" title="Đổi ảnh đại diện thành viên">
                 <span>📷 Đổi Ảnh</span>
@@ -10046,7 +10125,7 @@
             image = 'assets/logo-song-of-ht.jpg';
           }
         } else if (imageUrlInput) {
-          image = imageUrlInput;
+          image = normalizeMediaImageUrl(imageUrlInput);
         }
 
         const newMember = {
@@ -10234,7 +10313,7 @@
             console.error('Lỗi nén ảnh khi sửa thành viên:', imgErr);
           }
         } else if (urlInput) {
-          targetMem.image = urlInput;
+          targetMem.image = normalizeMediaImageUrl(urlInput);
         }
 
         saveStoredMembers(members);
@@ -10392,7 +10471,7 @@
             <!-- Header Card: Avatar phóng to 80-88px & Badge Ngày Sinh -->
             <div class="flex items-start justify-between gap-3 mb-3.5">
               <div class="birthday-avatar-wrap">
-                <img src="${photo}" alt="${item.name}" class="birthday-avatar-img pointer-events-none" loading="lazy" decoding="async" fetchpriority="low" onerror="this.onerror=null;this.src='${fallbackPhoto}'" />
+                <img src="${photo}" alt="${item.name}" class="birthday-avatar-img pointer-events-none" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="handleImgLoadError(this, '${fallbackPhoto}')" />
                 ${item.isToday ? '<span class="absolute -top-2 -right-2 text-2xl drop-shadow-md pointer-events-none">👑</span>' : '<span class="absolute -bottom-1 -right-1 text-base pointer-events-none">🎈</span>'}
               </div>
 
@@ -14113,7 +14192,7 @@ function initGraffitiWall() {
 
             <!-- Thumbnail Top 1 -->
             <div class="rounded-2xl overflow-hidden mb-6 relative aspect-video bg-ocean-900 border border-white/10 group-hover:border-cyan/40 transition-colors">
-              <img src="${escapeHTML(top1.thumbnail || 'assets/banner-song-of-ht.jpg')}" alt="${escapeHTML(top1.title)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" loading="lazy" decoding="async" fetchpriority="low" onerror="this.src='assets/logo-song-of-ht.jpg'" />
+              <img src="${escapeHTML(top1.thumbnail || 'assets/banner-song-of-ht.jpg')}" alt="${escapeHTML(top1.title)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="handleImgLoadError(this, 'assets/banner-song-of-ht.jpg')" />
               <div class="absolute inset-0 bg-gradient-to-t from-ocean-950 via-ocean-950/20 to-transparent"></div>
               <div class="absolute bottom-4 left-4 right-4 flex items-center justify-between">
                 <span class="px-3 py-1 rounded-lg bg-black/60 backdrop-blur text-xs font-bold text-cyan border border-cyan/30">
@@ -14211,7 +14290,7 @@ function initGraffitiWall() {
             <!-- Cột trái: Thumbnail & Thông tin cơ bản -->
             <div class="flex items-start sm:items-center gap-3.5 flex-1 min-w-0">
               <div class="w-20 h-14 sm:w-24 sm:h-16 rounded-xl overflow-hidden bg-black/40 border border-white/15 shrink-0 relative">
-                <img src="${escapeHTML(item.thumbnail || 'assets/banner-song-of-ht.jpg')}" alt="Thumbnail" class="w-full h-full object-cover" loading="lazy" decoding="async" fetchpriority="low" onerror="this.src='assets/logo-song-of-ht.jpg'" />
+                <img src="${escapeHTML(item.thumbnail || 'assets/banner-song-of-ht.jpg')}" alt="Thumbnail" class="w-full h-full object-cover" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="handleImgLoadError(this, 'assets/logo-song-of-ht.jpg')" />
                 <span class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/70 text-[9px] font-bold text-cyan">
                   ${escapeHTML(item.type || 'video').toUpperCase()}
                 </span>
@@ -14483,7 +14562,7 @@ function initGraffitiWall() {
         badge: document.getElementById('viralFormBadge')?.value.trim() || `TOP ${rank}`,
         title: title,
         desc: document.getElementById('viralFormDesc')?.value.trim() || '',
-        thumbnail: document.getElementById('viralFormThumbnail')?.value.trim() || 'assets/banner-song-of-ht.jpg',
+        thumbnail: normalizeMediaImageUrl(document.getElementById('viralFormThumbnail')?.value) || 'assets/banner-song-of-ht.jpg',
         views: document.getElementById('viralFormViews')?.value.trim() || '0 View',
         likes: document.getElementById('viralFormLikes')?.value.trim() || '0 Thích',
         comments: document.getElementById('viralFormComments')?.value.trim() || '0 Bình Luận',
